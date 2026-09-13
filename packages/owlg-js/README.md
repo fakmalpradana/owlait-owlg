@@ -7,7 +7,7 @@ Part of [fakmalpradana/owlait-owlg](https://github.com/fakmalpradana/owlait-owlg
 full reference is [docs/node-api.md](https://github.com/fakmalpradana/owlait-owlg/blob/main/docs/node-api.md).
 
 ```bash
-npm install owlg
+npm install github:fakmalpradana/owlait-owlg#main:packages/owlg-js   # not on npm yet
 ```
 
 ## What it does

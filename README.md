@@ -12,43 +12,57 @@ files in place without decoding them to a GeoTIFF copy; a **pip** package; and a
 zero-dependency **npm** package.
 
 ```bash
-pip install owlg[full]
+pip install "owlg[full] @ git+https://github.com/fakmalpradana/owlait-owlg.git"
 
-owlg encode ortho.tif ortho.owlg --delta 2    # 2.9x smaller than a lossless GeoTIFF
-owlg verify ortho.owlg ortho.tif              # proves the bound over 6.6 M pixels
-owlg vrt    ortho.owlg                        # now QGIS and gdalinfo read it directly
+owlg encode ortho.tif ortho.owlg --delta 2      # 6.1x smaller than raw, 3.1x smaller than a lossless GeoTIFF
+owlg encode ortho.tif small.owlg --target 20x   # 20x smaller than raw: the encoder finds the smallest bound (+/-14 DN here)
+owlg verify small.owlg ortho.tif                # proves the bound over every one of 6.6 M pixels
+owlg vrt    ortho.owlg                          # now QGIS and gdalinfo read it directly
 ```
+
+Version 0.1.0. New here? Start with **[docs/getting-started.md](docs/getting-started.md)**.
 
 ---
 
 ## Why a bound, and not just a smaller file
 
 Lossy codecs are compared by average error, and averages hide the pixel that matters.
-JPEG at quality 85 has a respectable RMSE of 3.7 on the sample in this repository — and
-a worst pixel off by **30 DN**. WebP at quality 85 looks better still by RMSE, 4.3, and
-its worst pixel is off by **134 DN**. If that pixel sits on a building edge you are
-classifying, or in a shadow you are thresholding, the average never told you.
+On the drone orthophoto used throughout this README, JPEG 2000 — the same wavelet family
+as ECW — reaches 20x with a respectable RMSE of 3.0 and a worst pixel off by **44 DN**.
+JPEG XL at distance 1 has an RMSE of 3.1 and a worst pixel off by **125 DN** (its XYB
+colour space spends blue precision on what the eye cannot see). If that pixel sits on a
+building edge you are classifying, or in a shadow you are thresholding, the average never
+told you.
 
 OWLG stores a lossy base layer plus a **correction layer** that is entropy-coded against
 a hard bound. The base layer can be as aggressive as you like; the correction layer
 drags every pixel back inside `±delta` before the file is written. So you choose the
 error you can tolerate, and the format guarantees it rather than hoping for it.
 
-| | RMSE | worst pixel | size |
-|---|---:|---:|---:|
-| GeoTIFF JPEG q85 | 3.71 | **30 DN** | 0.384 MB |
-| GeoTIFF WebP q85 | 4.31 | **134 DN** | 0.114 MB |
-| OWLG `--delta 3` | 1.49 | **3 DN, guaranteed** | 0.289 MB |
-| OWLG `--delta 8` | 2.74 | **8 DN, guaranteed** | 0.164 MB |
+| drone orthophoto, 6.6 MB raw | size | vs raw | RMSE | worst pixel |
+|---|---:|---:|---:|---:|
+| GeoTIFF JPEG q85 | 1.307 MB | 5.1x | 2.98 | **29 DN** |
+| JPEG XL distance 1 | 0.449 MB | 14.8x | 3.08 | **125 DN** |
+| JPEG 2000 q10 | 0.666 MB | 10.0x | 1.26 | **15 DN** |
+| JPEG 2000 q5 | 0.334 MB | 19.9x | 2.96 | **44 DN** |
+| OWLG `--delta 2` | 1.090 MB | 6.1x | 1.10 | **2 DN, guaranteed** |
+| OWLG `--delta 8` | 0.473 MB | 14.0x | 2.62 | **8 DN, guaranteed** |
+| OWLG `--target 20x` (lands on delta 14) | 0.296 MB | 22.5x | 3.92 | **14 DN, guaranteed** |
 
-*(`samples/rgb_small.tif`, reproduce with `python benchmarks/bench_options.py`.)*
+At the *same worst-pixel error* OWLG is the smaller file: delta 8 gives 14.0x where
+JPEG 2000 with a worst pixel of 15 gives 10.0x. And OWLG's number is a promise written
+in the header; the others are what happened to this image.
+
+*(reproduce with `python benchmarks/bench_options.py your_ortho.tif --deep`; the JP2
+rows use OpenJPEG through GDAL. ECW itself needs a proprietary SDK GDAL builds rarely
+ship — measuring against real `.ecw` files is on the list.)*
 
 ---
 
 ## Contents
 
 - [Install](#install)
-- [Quick start](#quick-start)
+- [Quick start](#quick-start) — and the longer [getting-started guide](docs/getting-started.md)
 - [Efficiency, option by option](#efficiency-option-by-option)
 - [Large rasters: 10–100 GB](#large-rasters-10100-gb)
 - [QGIS plugin](#qgis-plugin)
@@ -70,18 +84,20 @@ error you can tolerate, and the format guarantees it rather than hoping for it.
 
 ### Python (pip)
 
+Not on PyPI yet, so install from the repository (the extras work the same way):
+
 ```bash
-pip install owlg[full]      # everything: rasterio, imagecodecs, numba, cryptography, pillow
-pip install owlg            # reader only; numpy is the single hard dependency
+pip install "owlg[full] @ git+https://github.com/fakmalpradana/owlait-owlg.git"   # everything
+pip install "owlg @ git+https://github.com/fakmalpradana/owlait-owlg.git"         # reader only; numpy is the single hard dependency
 ```
 
-From this repository:
+Or from a clone:
 
 ```bash
 git clone https://github.com/fakmalpradana/owlait-owlg.git
 cd owlait-owlg
 pip install -e .[dev]
-pytest -q                   # 200 tests
+pytest -q                   # 226 tests
 ```
 
 The extras are deliberately granular, because the point of a small reader is that it
@@ -115,7 +131,7 @@ real decode probes:
 ### Node (npm)
 
 ```bash
-npm install owlg           # zero dependencies, ~10 kB packed
+npm install github:fakmalpradana/owlait-owlg#main:packages/owlg-js   # not on npm yet; zero dependencies, ~10 kB
 npx owlg info file.owlg
 ```
 
@@ -142,6 +158,11 @@ owlg encode ortho.tif small.owlg --delta 2
 owlg verify small.owlg ortho.tif
 #   error  : max=2 (bound +/-2) -> BOUND PROVEN
 
+# A size goal instead: the encoder searches the smallest bound that reaches it
+owlg encode ortho.tif tiny.owlg --target 20x --base avif
+#   -> delta 14 (+/-14 DN) is the smallest bound that reaches 20x
+#   target 20x reached: 22.5x with a guaranteed bound of +/-14 DN
+
 # Read it in QGIS / gdalinfo / rasterio without decoding a copy
 owlg vrt small.owlg
 export GDAL_VRT_ENABLE_PYTHON=YES
@@ -153,99 +174,141 @@ owlg tiles ortho3857.tif map.owlgt --minzoom 16 --maxzoom 20
 owlg serve map.owlgt --port 8080
 ```
 
-Full flag-by-flag reference: **[docs/cli.md](docs/cli.md)**.
+Full flag-by-flag reference: **[docs/cli.md](docs/cli.md)**. On a terminal the CLI
+colours its output — a green `BOUND PROVEN`, a red `*** VIOLATED ***`, progress bars for
+the quality search and tile rows, `info` as a key/value sheet with a pyramid table. Piped
+or under `NO_COLOR` it prints exactly the same words, plain.
 
 ---
 
 ## Efficiency, option by option
 
 Every number below was produced by `benchmarks/bench_options.py` on the machine that
-wrote this README, and can be regenerated on yours. Two rasters are shown because
+wrote this README, and can be regenerated on yours. Three rasters are shown because
 compression ratios depend enormously on the imagery: satellite scenes and drone
 orthophotos do not behave alike, and quoting only the flattering one would be dishonest.
 
-The **vs GeoTIFF** column compares against a `DEFLATE + PREDICTOR=2` GeoTIFF, which is
-what most people mean by "the lossless file I already have".
+Two columns matter. **vs raw** is against the uncompressed pixels (`width x height x
+bands`), the number a 20x goal is measured in. **vs GeoTIFF** is against a
+`DEFLATE + PREDICTOR=2` GeoTIFF, which is what most people mean by "the lossless file I
+already have". The JPEG 2000 rows are OpenJPEG through GDAL — the closest freely writable
+stand-in for ECW, which uses the same wavelet approach.
 
-### A. `samples/rgb_small.tif` — 791 × 718 × 3, Landsat, ships with this repo
+### A. A drone orthophoto — 1471 × 1128 × 4, RGBA, 6.6 MB raw
+
+The representative case for photogrammetry. The alpha band is constant and costs nothing.
+Not redistributable, so this table is evidence rather than something you can rerun.
 
 **Reference formats**
 
 | Option | Size | vs raw | vs GeoTIFF | max err | RMSE |
 |---|---:|---:|---:|---:|---:|
-| GeoTIFF DEFLATE+pred (lossless) | 0.763 MB | 2.23x | 1.00x | **0** | 0.000 |
-| GeoTIFF LZW (lossless) | 0.880 MB | 1.94x | 0.87x | **0** | 0.000 |
-| GeoTIFF ZSTD (lossless) | 0.758 MB | 2.25x | 1.01x | **0** | 0.000 |
-| GeoTIFF WebP lossless | 0.598 MB | 2.85x | 1.28x | **0** | 0.000 |
-| COG DEFLATE (lossless) | 0.780 MB | 2.19x | 0.98x | **0** | 0.000 |
-| GeoTIFF JPEG q85 (lossy) | 0.384 MB | 4.44x | 1.99x | 30 | 3.710 |
-| GeoTIFF JPEG q75 (lossy) | 0.296 MB | 5.76x | 2.58x | 54 | 5.604 |
-| GeoTIFF WebP q85 (lossy) | 0.114 MB | 14.95x | 6.70x | 134 | 4.311 |
+| GeoTIFF DEFLATE+pred (lossless) | 3.353 MB | 1.98x | 1.00x | **0** | 0.000 |
+| GeoTIFF ZSTD (lossless) | 3.283 MB | 2.02x | 1.02x | **0** | 0.000 |
+| JPEG 2000 lossless | 1.986 MB | 3.34x | 1.69x | **0** | 0.000 |
+| JPEG XL lossless | 1.889 MB | 3.51x | 1.78x | **0** | 0.000 |
+| GeoTIFF JPEG q85 (lossy) | 1.307 MB | 5.08x | 2.56x | 29 | 2.975 |
+| GeoTIFF JPEG q75 (lossy) | 0.999 MB | 6.64x | 3.36x | 40 | 4.074 |
+| JPEG 2000 q25 (lossy) | 1.251 MB | 5.31x | 2.68x | 4 | 0.555 |
+| JPEG 2000 q10 (lossy) | 0.666 MB | 9.96x | 5.03x | 15 | 1.263 |
+| JPEG 2000 q5 (lossy) | 0.334 MB | 19.86x | 10.03x | 44 | 2.957 |
+| JPEG 2000 q3 (lossy) | 0.202 MB | 32.91x | 16.63x | 59 | 4.943 |
+| JPEG XL distance 1 (lossy) | 0.449 MB | 14.77x | 7.46x | 125 | 3.080 |
+| JPEG XL distance 2 (lossy) | 0.280 MB | 23.70x | 11.97x | 106 | 4.423 |
 
 **OWLG lossless — revert is bit-identical**
 
 | Option | Size | vs raw | vs GeoTIFF | max err |
 |---|---:|---:|---:|---:|
-| `--delta 0 --base webp` *(default: portable)* | 0.680 MB | 2.51x | 1.12x | **0** |
-| `--delta 0 --base avif` | 0.659 MB | 2.58x | 1.16x | **0** |
-| `--delta 0 --base jxl` *(smallest; needs a JXL decoder)* | 0.587 MB | 2.90x | 1.30x | **0** |
-| `--delta 0 --layout tiled` *(constant RAM + pyramid)* | 0.746 MB | 2.28x | 1.02x | **0** |
+| `--delta 0 --base webp` *(default: portable)* | 2.405 MB | 2.76x | 1.39x | **0** |
+| `--delta 0 --base avif` | 2.298 MB | 2.89x | 1.46x | **0** |
+| `--delta 0 --base jxl` *(smallest; needs a JXL decoder)* | 1.884 MB | 3.52x | 1.78x | **0** |
+| `--delta 0 --layout tiled` *(constant RAM + pyramid)* | 2.490 MB | 2.67x | 1.35x | **0** |
 
 **OWLG near-lossless — the hard bound**
 
 | Option | Size | vs raw | vs GeoTIFF | max err | RMSE |
 |---|---:|---:|---:|---:|---:|
-| `--delta 1` | 0.455 MB | 3.74x | 1.68x | 1 | 0.659 |
-| `--delta 2` | 0.353 MB | 4.83x | 2.16x | 2 | 1.116 |
-| `--delta 3` | 0.289 MB | 5.91x | 2.65x | 3 | 1.487 |
-| `--delta 5` | 0.216 MB | 7.89x | 3.54x | 5 | 2.136 |
-| `--delta 8` | 0.164 MB | 10.41x | 4.66x | 8 | 2.742 |
+| `--delta 1` | 1.481 MB | 4.48x | 2.26x | 1 | 0.695 |
+| `--delta 2` | 1.090 MB | 6.09x | 3.08x | 2 | 1.098 |
+| `--delta 3` | 0.873 MB | 7.60x | 3.84x | 3 | 1.350 |
+| `--delta 5` | 0.636 MB | 10.44x | 5.27x | 5 | 1.928 |
+| `--delta 8` | 0.473 MB | 14.04x | 7.09x | 8 | 2.623 |
+| `--delta 12` | 0.355 MB | 18.67x | 9.43x | 12 | 3.790 |
+| `--delta 16` | 0.283 MB | 23.44x | 11.84x | 16 | 4.566 |
+| `--delta 2 --base avif` | 1.034 MB | 6.42x | 3.24x | 2 | 1.112 |
+| **`--target 20x`** *(encoder chose delta 14)* | 0.316 MB | **21.02x** | 10.62x | 14 | 3.955 |
+| **`--target 20x --base avif`** *(delta 14)* | 0.296 MB | **22.46x** | 11.34x | 14 | 3.922 |
 
-**Layout, recovery tier, encryption** (all at `--delta 2`)
+Read the two families together. At a worst pixel of 15, JPEG 2000 gives 10.0x; OWLG at a
+*guaranteed* 8 gives 14.0x. At ~20x, JPEG 2000 lets a pixel drift 44 DN and JPEG XL 106;
+OWLG holds every pixel within 14. The bound costs nothing here — it is what makes the
+file smaller, because the base layer is free to be aggressive when a cheap correction
+layer is going to catch the outliers.
 
-| Option | Size | vs GeoTIFF | max err | Note |
+**Layout, recovery tier, encryption** (at `--delta 2`)
+
+| Option | Size | vs raw | max err | Note |
 |---|---:|---:|---:|---|
-| `--base avif` | 0.338 MB | 2.26x | 2 | smallest at this bound |
-| `--layout tiled` | 0.392 MB | 1.95x | 2 | constant RAM, 3 pyramid levels |
-| `--layout tiled --no-overviews` | 0.354 MB | 2.16x | 2 | the pyramid costs ~11% here |
-| `--recovery` | 0.692 MB | 1.10x | **0** | ships light, reverts bit-identical |
-| `--encrypt` | 0.353 MB | 2.16x | 2 | AES-256-GCM costs ~0.1% |
-| ↳ `owlg split` light half | 0.353 MB | 2.16x | 2 | distribute this |
-| ↳ `owlg split` recovery half | 0.339 MB | 2.25x | — | archive this |
+| `--layout tiled` | 1.173 MB | 5.66x | 2 | constant RAM, 5 pyramid levels at q50 |
+| `--layout tiled --no-overviews` | 1.096 MB | 6.06x | 2 | the pyramid costs ~7% |
+| `--recovery` | 2.481 MB | 2.68x | **0** | ships light (1.090 MB), reverts bit-identical |
+| `--encrypt` | 1.090 MB | 6.09x | 2 | AES-256-GCM costs ~0.1% |
 
-**OWLGT web tiles** (z6–z9, 32 tiles)
+**OWLGT web tiles** (z14–19)
 
 | Option | Size | vs raw | vs gdal2tiles |
 |---|---:|---:|---:|
-| `--profile view --q 50` | 0.081 MB | 21.0x | **15.9x smaller** |
-| `--profile view --q 72` *(default)* | 0.151 MB | 11.3x | **8.5x smaller** |
-| `--profile exact --delta 3` | 0.372 MB | 4.6x | **3.5x smaller** |
-| gdal2tiles PNG tree | 1.290 MB | 1.3x | 1.00x |
-| MBTiles PNG | 1.225 MB | 1.4x | 1.05x |
+| `--profile view --q 50` | 0.363 MB | 18.3x | **19.6x smaller** |
+| `--profile view --q 72` *(default)* | 0.695 MB | 9.6x | **10.2x smaller** |
+| `--profile exact --delta 3` | 1.811 MB | 3.7x | 3.9x smaller |
+| gdal2tiles PNG tree (91 tiles) | 7.109 MB | 0.93x | 1.00x |
+| MBTiles PNG | 6.648 MB | 1.00x | 1.07x |
 
-### B. A real drone orthophoto — 1471 × 1128 × 4, RGBA, 6.6 MB raw
+### B. A larger drone orthophoto — 2937 × 2252 × 4, 26.5 MB raw
 
-Not redistributable, so this table is evidence rather than something you can rerun. It
-is the more representative case for photogrammetry work: aerial imagery compresses far
-better than satellite scenes.
+Same sensor family, four times the pixels, more texture. 20x needs a wider bound here.
+
+| Option | Size | vs raw | vs GeoTIFF | max err |
+|---|---:|---:|---:|---:|
+| GeoTIFF DEFLATE+pred | 14.573 MB | 1.82x | 1.00x | **0** |
+| GeoTIFF JPEG q85 | 5.559 MB | 4.76x | 2.62x | 34 |
+| JPEG 2000 q10 | 2.647 MB | 9.99x | 5.50x | 21 |
+| JPEG 2000 q5 | 1.324 MB | 19.98x | 11.00x | 63 |
+| OWLG `--delta 0` | 10.169 MB | 2.60x | 1.43x | **0** |
+| OWLG `--delta 2` | 4.813 MB | 5.50x | 3.03x | 2 |
+| OWLG `--delta 2 --layout tiled` | 5.179 MB | 5.11x | 2.81x | 2 |
+| OWLG `--delta 5` | 2.838 MB | 9.32x | 5.13x | 5 |
+| OWLG `--delta 8` | 2.118 MB | 12.49x | 6.88x | 8 |
+| OWLG `--delta 12` | 1.615 MB | 16.38x | 9.02x | 12 |
+| OWLG `--delta 16` | 1.285 MB | 20.59x | 11.34x | 16 |
+| **OWLG `--target 20x --base avif`** *(delta 16)* | 1.236 MB | **21.40x** | 11.79x | 16 |
+| OWLGT `view q72` | 3.825 MB | 6.9x | — | — |
+| gdal2tiles (430 tiles) | 40.046 MB | 0.66x | — | — |
+
+### C. `samples/rgb_small.tif` — 791 × 718 × 3, Landsat 7, ships with this repo
+
+Satellite imagery is noisier per pixel than aerial imagery and compresses worse at every
+bound. This is the raster you can rerun.
 
 | Option | Size | vs raw | vs GeoTIFF | max err | RMSE |
 |---|---:|---:|---:|---:|---:|
-| GeoTIFF DEFLATE+pred | 3.211 MB | 2.07x | 1.00x | **0** | 0.000 |
-| GeoTIFF WebP lossless | 2.063 MB | 3.22x | 1.56x | **0** | 0.000 |
-| GeoTIFF JPEG q85 | 1.252 MB | 5.30x | 2.57x | 29 | 2.976 |
-| **OWLG `--delta 0`** | 1.864 MB | 3.56x | **1.72x** | **0** | 0.000 |
-| **OWLG `--delta 1`** | 1.487 MB | 4.46x | **2.16x** | 1 | 0.696 |
-| **OWLG `--delta 2`** | 1.095 MB | 6.06x | **2.93x** | 2 | 1.096 |
-| **OWLG `--delta 3`** | 0.880 MB | 7.54x | **3.65x** | 3 | 1.345 |
-| **OWLG `--delta 5`** | 0.644 MB | 10.31x | **4.99x** | 5 | 1.911 |
-| **OWLG `--delta 8`** | 0.479 MB | 13.86x | **6.70x** | 8 | 2.599 |
-| OWLGT `view q72` | 0.693 MB | 9.57x | 4.63x | — | — |
-| gdal2tiles PNG tree (91 tiles) | 7.113 MB | 0.93x | 0.45x | — | — |
+| GeoTIFF DEFLATE+pred | 0.779 MB | 2.19x | 1.00x | **0** | 0.000 |
+| GeoTIFF JPEG q85 | 0.384 MB | 4.44x | 2.03x | 30 | 3.710 |
+| JPEG 2000 q10 | 0.173 MB | 9.86x | 4.51x | 31 | 2.680 |
+| JPEG 2000 q5 | 0.088 MB | 19.43x | 8.88x | 81 | 5.346 |
+| JPEG XL distance 1 | 0.137 MB | 12.41x | 5.67x | 86 | 4.228 |
+| OWLG `--delta 0` | 0.676 MB | 2.52x | 1.15x | **0** | 0.000 |
+| OWLG `--delta 3` | 0.285 MB | 5.98x | 2.73x | 3 | 1.483 |
+| OWLG `--delta 8` | 0.162 MB | 10.55x | 4.82x | 8 | 2.743 |
+| OWLG `--delta 12` | 0.124 MB | 13.77x | 6.30x | 12 | 3.790 |
+| OWLG `--delta 16` | 0.101 MB | 16.81x | 7.68x | 16 | 4.649 |
+| OWLG `--target 20x` *(delta 24)* | 0.076 MB | 22.52x | 10.30x | 24 | — |
 
-At `--delta 2` — an error invisible on screen and below the radiometric noise of most
-drone sensors — the file is **2.9x smaller than the lossless GeoTIFF** and still
-smaller than JPEG q85, while JPEG's worst pixel is off by 29 DN and OWLG's by 2.
+Full tables, including LZW/ZSTD/COG, recovery and encryption rows and the OWLGT
+comparison for every raster, are in [`results/`](results/). What was tried to push these
+numbers further, and why the correction coder was left alone, is in
+[`results/codec_experiments_2026-09.md`](results/codec_experiments_2026-09.md).
 
 ### Which option should I use?
 
@@ -254,6 +317,7 @@ smaller than JPEG q85, while JPEG's worst pixel is off by 29 DN and OWLG's by 2.
 | An archival master, byte-for-byte | `--delta 0` (add `--base jxl` for the smallest, if your readers have JXL) |
 | A working copy for analysis | `--delta 1` or `--delta 2` |
 | A distribution copy for viewing | `--delta 3` to `--delta 8` |
+| The smallest file that still carries a written bound | `--target 20x --base avif` (lands on delta 12–16 for aerial imagery) |
 | Both at once | `--delta 2 --recovery`, then `owlg split` |
 | A raster over ~16 MPixel | nothing — `--layout auto` already picks `tiled` |
 | Maximum portability | `--base webp` (the default) |
@@ -469,6 +533,9 @@ GeoTIFF  ->  base layer (lossy WebP/AVIF, or lossless JPEG XL)
              entropy-coded with a binary adaptive range coder over 567 contexts
 ```
 
+`--target RATIO` runs the same search over the delta ladder as well, and keeps the
+smallest bound whose best total meets the size goal.
+
 The trick is that the correction coder predicts from the **fully decoded base layer**,
 which is available on both sides. A pure DPCM coder only sees pixels it has already
 decoded — causal context. Here the context is non-causal: the coder knows what the
@@ -494,11 +561,11 @@ Format specification: **[docs/format.md](docs/format.md)**.
 src/owlg/              Python package (the format, the CLI, the server)
 packages/owlg-js/      npm package: zero-dependency reader, CLI, MapLibre/Leaflet helpers
 qgis-plugin/owlg_qgis/ QGIS plugin, decoder vendored inside
-docs/                  CLI, Python API, Node API, format spec, QGIS notes
-benchmarks/            bench_options.py — every number in this README
+docs/                  getting-started, CLI, Python API, Node API, format spec, QGIS notes
+benchmarks/            bench_options.py (every number in this README), bench_codec_lab.py (one variable at a time)
 samples/               rgb_small.tif (Landsat, public domain, via rasterio's test data)
-results/               benchmark output, .json and .md
-tests/                 200 pytest tests
+results/               benchmark output (.json/.md) and the efficiency study
+tests/                 226 pytest tests
 scripts/build_all.py   builds the plugin zip, the wheel and the npm tarball
 ```
 
@@ -524,6 +591,11 @@ one.
 Stated plainly, because finding these out yourself after adopting a format is worse than
 reading them here.
 
+- **20x vs raw needs a bound of 12–16 DN on aerial imagery, and more on satellite
+  scenes.** Below that the file is dominated by the cost of *locating* the few pixels a
+  lossy base leaves outside the bound, and that cost is close to its theoretical floor
+  (see the results write-up). Whether ±14 DN is acceptable is your call — the format only
+  makes sure you know.
 - **uint8 only.** Int16, uint16 and float rasters are rejected. DEMs and multispectral
   imagery at higher bit depths are not supported yet.
 - **Exact decoding without numba is slow**: about 3.7 s per 512 px window versus 140 ms
@@ -538,7 +610,9 @@ reading them here.
   should scale nearly linearly. Not done yet.
 - **`--recovery` is flat-layout only**, so it is not available for very large rasters. In
   the tiled layout `--delta 0` already gives bit-identical revert.
-- The benchmark tables come from two rasters on one machine. Ratios are not universal.
+- The benchmark tables come from three rasters on one machine. Ratios are not universal.
+- The comparison against ECW is by proxy (JPEG 2000 / OpenJPEG). Real `.ecw` files have
+  not been measured yet.
 
 ---
 
