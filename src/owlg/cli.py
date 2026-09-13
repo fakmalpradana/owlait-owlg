@@ -26,6 +26,42 @@ def _auto_layout(src):
     return 'tiled' if n > AUTO_TILED_PIXELS else 'flat'
 
 
+def _next_delta(d):
+    from .target import DELTAS
+    later = [x for x in DELTAS if x > d]
+    return later[0] if later else d + 8
+
+
+def _search_target(a, layout):
+    """Pick (delta, q) for --target. Prints the probes so the trade-off is visible."""
+    from . import imgio as _io
+    from .target import parse_target, search, estimate_flat, estimate_tiled
+    want = parse_target(a.target)
+    base = (a.base or 'webp')
+    if base not in _io.QUALITY_LADDERS:
+        sys.exit(f"--target works with --base webp or avif (got {base})")
+    ladder = [int(a.q)] if a.q else _io.QUALITY_LADDERS[base]
+    print(f"  searching the smallest delta that gives {want:g}x vs raw (base {base})")
+    if layout == 'tiled':
+        from .tiled import scan_source, _Sampler
+        W, H, B, _meta, _const, coded = scan_source(a.src)
+        raw = W * H * B
+        est = estimate_tiled(_Sampler(a.src, coded, a.tile or 512), base, ladder, a.overviews)
+    else:
+        from .container import load_source
+        A, _meta, _const, coded, groups = load_source(a.src)
+        raw = A.nbytes
+        est = estimate_flat(np.ascontiguousarray(A[coded]), coded, groups, base, ladder,
+                            a.tile or 1024)
+    log = lambda d, n, q, r: print(f"    delta {d:<2d} q={q:<3d} -> {n/1e6:.3f} MB  {r:5.1f}x")
+    d, n, q, ok = search(est, raw, want, log=log)
+    if ok:
+        print(f"  -> delta {d} (+/-{d} DN) is the smallest bound that reaches {want:g}x")
+    else:
+        print(f"  -> even delta {d} only reaches {raw/max(n,1):.1f}x; encoding at +/-{d} DN anyway")
+    return d, q
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='owlg', description='Optimized Owl GeoTIFF')
     ap.add_argument('--password', '-P', help='passphrase (or env OWLG_KEY)')
@@ -37,6 +73,10 @@ def main(argv=None):
     e.add_argument('--delta', type=int, default=0,
                    help='hard per-pixel error bound in DN; 0 (default) = lossless, '
                         'revert is bit-identical')
+    e.add_argument('--target', default=None, metavar='RATIO',
+                   help='size goal vs raw pixels, e.g. 20 or 20x: search the smallest '
+                        'delta that reaches it, then encode with that delta (the '
+                        'chosen bound is written to the header and printed)')
     e.add_argument('--codec', default='auto',
                    help='pin an exact base codec and skip the quality search; '
                         'requires --q, flat layout only. Prefer --base.')
@@ -121,22 +161,34 @@ def main(argv=None):
         layout = a.layout
         if layout == 'auto':
             layout = 'flat' if a.recovery else _auto_layout(a.src)
+        if layout == 'tiled' and a.recovery:
+            sys.exit("--recovery is only available with --layout flat "
+                     "(in the tiled layout, --delta 0 is already bit-identical)")
+        delta, q = a.delta, a.q
+        if a.target:
+            delta, q = _search_target(a, layout)
         if layout == 'tiled':
-            if a.recovery:
-                sys.exit("--recovery is only available with --layout flat "
-                         "(in the tiled layout, --delta 0 is already bit-identical)")
             from .tiled import write_tiled
-            write_tiled(a.src, a.dst, delta=a.delta,
-                        base=(a.base or 'webp'), q=(int(a.q) if a.q else None),
-                        tile=(a.tile or 512), overviews=a.overviews,
-                        min_overview=a.min_overview, overview_q=a.overview_q,
-                        password=pw if a.encrypt else None, kdf_iters=a.iters)
+            r = write_tiled(a.src, a.dst, delta=delta,
+                            base=(a.base or 'webp'), q=(int(q) if q else None),
+                            tile=(a.tile or 512), overviews=a.overviews,
+                            min_overview=a.min_overview, overview_q=a.overview_q,
+                            password=pw if a.encrypt else None, kdf_iters=a.iters)
         else:
             from .container import write_owlg
-            write_owlg(a.src, a.dst, delta=a.delta, codec=a.codec, q=a.q,
-                       tile=(a.tile or 1024), base=a.base,
-                       password=pw if a.encrypt else None, kdf_iters=a.iters,
-                       recovery=a.recovery)
+            r = write_owlg(a.src, a.dst, delta=delta, codec=a.codec, q=q,
+                           tile=(a.tile or 1024), base=a.base,
+                           password=pw if a.encrypt else None, kdf_iters=a.iters,
+                           recovery=a.recovery)
+        if a.target:
+            from .target import parse_target
+            want = parse_target(a.target)
+            got = r['ratio']
+            if got >= want:
+                print(f"  target {want:g}x reached: {got:.1f}x with a guaranteed bound of +/-{delta} DN")
+            else:
+                print(f"  target {want:g}x NOT reached: {got:.1f}x at +/-{delta} DN "
+                      f"(the search estimate was optimistic; re-run with --delta {_next_delta(delta)})")
     elif a.cmd == 'decode':
         from .container import to_tif
         to_tif(a.src, a.dst, password=_pw(a), fast=a.fast, tier=a.tier,
