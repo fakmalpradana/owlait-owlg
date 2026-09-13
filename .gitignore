@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+*.tgz
+package-lock.json
+
+# Build output
+/dist-plugin/
+*.zip
+
+# Benchmark and scratch output
+/results/*.work/
+/work/
+*.owlg
+*.owlgt
+*.owlr
+*.vrt
+*.ov[0-9].vrt
+
+# Keep the tracked samples
+!samples/*.tif
+
+# OS
+.DS_Store
+Thumbs.db

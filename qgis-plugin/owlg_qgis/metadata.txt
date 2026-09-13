@@ -1,0 +1,16 @@
+[general]
+name=OWLG Reader
+qgisMinimumVersion=3.16
+description=Opens .owlg and .owlgt directly in QGIS - the format stays .owlg, with no GeoTIFF copy. Self-contained, no pip install.
+about=Adds read support for .owlg (Optimized Owl GeoTIFF) and .owlgt (tile pyramid) directly in QGIS. Install from ZIP is enough - the entire decoder is bundled inside the plugin and only needs numpy and Pillow, which already ship with QGIS. Encrypted files will ask for a passphrase. A fast preview mode (instantaneous) and an exact mode with a guaranteed error bound are both available.
+version=4.0.0
+author=Geotwinverse
+email=official@geotwinverse.ai
+tracker=https://github.com/fakmalpradana/owlait-owlg/issues
+repository=https://github.com/fakmalpradana/owlait-owlg
+homepage=https://github.com/fakmalpradana/owlait-owlg#readme
+experimental=True
+deprecated=False
+hasProcessingProvider=no
+tags=raster,compression,geotiff,owlg,owlgt,near-lossless,tiles,wms
+category=Raster

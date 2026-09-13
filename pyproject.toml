@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "owlg"
+version = "4.0.0"
+description = "OWLG (Optimized Owl GeoTIFF) - near-lossless raster with a hard per-pixel error bound, constant-RAM tiled storage for 10-100 GB rasters, optional AES-256-GCM encryption, and OWLGT web tile pyramids served over OGC API - Tiles and WMS 1.3.0."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Fairuz Akmal Pradana", email = "official@geotwinverse.ai" }]
+keywords = ["geotiff", "raster", "gis", "compression", "near-lossless", "cog",
+            "tiles", "ogc-api", "wms", "qgis", "avif", "webp", "remote-sensing",
+            "photogrammetry", "digital-twin"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Multimedia :: Graphics",
+  "Operating System :: OS Independent",
+]
+dependencies = ["numpy>=1.21"]
+
+[project.optional-dependencies]
+codecs  = ["imagecodecs>=2023.1.23"]
+encode  = ["rasterio>=1.3", "imagecodecs>=2023.1.23"]
+fast    = ["numba>=0.57"]
+crypto  = ["cryptography>=41"]
+pillow  = ["pillow>=10.1"]
+full    = ["rasterio>=1.3", "imagecodecs>=2023.1.23", "numba>=0.57",
+           "cryptography>=41", "pillow>=10.1"]
+dev     = ["pytest>=7", "build", "rasterio>=1.3", "imagecodecs>=2023.1.23",
+           "numba>=0.57", "cryptography>=41", "pillow>=10.1"]
+
+[project.scripts]
+owlg = "owlg.cli:run"
+
+[project.urls]
+Homepage      = "https://github.com/fakmalpradana/owlait-owlg"
+Repository    = "https://github.com/fakmalpradana/owlait-owlg"
+Issues        = "https://github.com/fakmalpradana/owlait-owlg/issues"
+Documentation = "https://github.com/fakmalpradana/owlait-owlg#readme"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["owlg*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+markers = [
+  "slow: takes more than a few seconds; deselect with -m 'not slow'",
+]

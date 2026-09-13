@@ -1,0 +1,51 @@
+{
+  "name": "owlg",
+  "version": "4.0.0",
+  "description": "Reader for OWLG (Optimized Owl GeoTIFF) and OWLGT web tile pyramids - near-lossless raster with a hard per-pixel error bound. Zero dependencies.",
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./maplibre": "./src/maplibre.mjs",
+    "./leaflet": "./src/leaflet.mjs",
+    "./server": "./src/server.mjs"
+  },
+  "bin": {
+    "owlg": "bin/owlg.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "geotiff",
+    "raster",
+    "gis",
+    "tiles",
+    "ogc-api",
+    "wms",
+    "avif",
+    "compression",
+    "owlg",
+    "owlgt",
+    "maplibre",
+    "leaflet"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "author": "Fairuz Akmal Pradana <official@geotwinverse.ai>",
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fakmalpradana/owlait-owlg.git",
+    "directory": "packages/owlg-js"
+  },
+  "bugs": {
+    "url": "https://github.com/fakmalpradana/owlait-owlg/issues"
+  },
+  "homepage": "https://github.com/fakmalpradana/owlait-owlg#readme"
+}
