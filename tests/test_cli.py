@@ -206,6 +206,31 @@ def test_vrt_exposes_the_tiled_pyramid_as_overviews(encode, workspace, capsys):
     assert (workspace / "ov.vrt.ov1.vrt").is_file()
 
 
+@needs_encoder
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_vrt_honours_gdal_buffer_size(layout, encode, workspace, capsys):
+    """QGIS asks GDAL for a window at canvas resolution (buf smaller than the
+    window). GDAL hands the pixel function an out_ar of the BUFFER size; the
+    function must resample into it, not broadcast the native window and fail -
+    on failure GDAL falls back to decoding the whole raster at full res."""
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.windows import Window
+    skip_unless_supported(layout, 2)
+    vrt = workspace / "buf.vrt"
+    _main(capsys, ["vrt", encode(layout, 2), vrt])
+    win = Window(0, 0, 400, 400)
+    with rasterio.Env(GDAL_VRT_ENABLE_PYTHON="YES"), rasterio.open(vrt) as ds:
+        native = ds.read(1, window=win)
+        small = ds.read(1, window=win, out_shape=(100, 100))
+        whole = ds.read(out_shape=(3, 150, 150))
+    assert small.shape == (100, 100)
+    assert whole.shape == (3, 150, 150)
+    if layout == "flat":                  # no pyramid: the function itself resamples
+        assert (small == native[::4, ::4]).all()      # nearest, top-left anchored
+    else:                                 # tiled: GDAL serves it from a base-only level
+        assert small.any() and whole.any()
+
+
 # ----------------------------------------------------------------------- npy
 @needs_encoder
 @pytest.mark.parametrize("fmt,layout_opt", [("npy", "CHW"), ("npy", "HWC"),

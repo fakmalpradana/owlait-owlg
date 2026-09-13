@@ -37,8 +37,17 @@ def read_band(in_ar, out_ar, xoff, yoff, xsize, ysize,
     except TypeError:                      # v3 reader, which has no level parameter
         a = read_window(path, band, xoff, yoff, xsize, ysize, password=pw, fast=fast)
     h, w = a.shape
-    out_ar[:] = 0
-    out_ar[:h, :w] = a
+    if a.shape != (ysize, xsize):              # short read at the raster edge: pad
+        full = np.zeros((ysize, xsize), a.dtype); full[:h, :w] = a; a = full
+    oh, ow = out_ar.shape
+    if (oh, ow) != (ysize, xsize):
+        # GDAL passes out_ar at the caller's BUFFER size, which QGIS sets to the
+        # canvas resolution. If we ignore that and broadcast the native window,
+        # GDAL abandons the overview and decodes the whole raster at level 0.
+        # ponytail: nearest, top-left anchored; GDAL already chose the overview
+        # closest to the buffer, so this is at most a ~2x downsample.
+        a = a[(np.arange(oh) * ysize // oh)[:, None], (np.arange(ow) * xsize // ow)[None, :]]
+    out_ar[:] = a
 
 
 MODULE_NAME = None          # set by the caller when the package is vendored under another name

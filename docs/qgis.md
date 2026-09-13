@@ -230,4 +230,9 @@ Run the diagnostics self-test to tell these apart.
 **Panning is slow in exact mode** — numba is not installed in the QGIS Python. Use fast
 preview for navigation, or install numba.
 
+**AVIF files are slower than WebP files on macOS** — the QGIS macOS build (3.44) ships
+neither Pillow nor a GDAL AVIF driver, so the plugin decodes AVIF tiles through the
+system `sips` tool, one subprocess per tile (~0.5 s). WebP decodes in-process through
+GDAL. For files meant to be opened in QGIS on a Mac, prefer `--base webp`.
+
 Full logs: **View ▸ Panels ▸ Log Messages ▸ OWLG**.
