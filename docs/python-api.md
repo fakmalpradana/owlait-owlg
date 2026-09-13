@@ -46,7 +46,7 @@ The package root re-exports only the container functions:
 ```python
 >>> import owlg
 >>> owlg.__version__
-'4.0.0'
+'0.1.0'
 >>> [n for n in dir(owlg) if not n.startswith('_')]
 ['OwlgError', 'codec', 'container', 'crypto', 'imgio', 'info', 'open_owlg', 'rc',
  'read_owlg', 'to_tif', 'write_owlg']

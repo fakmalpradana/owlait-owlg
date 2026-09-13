@@ -42,7 +42,8 @@ def rebase(src, dst, base=DEFAULT_BASE, delta=0, password=None, verbose=True):
         if delta == 0:
             print(f"  guarantee vs the ORIGINAL GeoTIFF stays +/-{src_delta} DN (unchanged)")
         else:
-            print(f"  WARNING: the guarantee vs the ORIGINAL GeoTIFF is now +/-{total} DN "
-                  f"({src_delta} from the source + {delta} from re-encoding)")
+            from . import _term as T
+            print(T.warn(f"  WARNING: the guarantee vs the ORIGINAL GeoTIFF is now +/-{total} DN ")
+                  + T.dim(f"({src_delta} from the source + {delta} from re-encoding)"))
     r['guarantee_vs_original'] = total
     return r

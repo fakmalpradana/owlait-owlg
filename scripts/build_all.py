@@ -19,9 +19,9 @@ VERSION = re.search(r'__version__ = "([^"]+)"',
 # a new module that is forgotten here fails the build rather than failing in a
 # user's plugin.
 VENDOR = ['__init__.py', '__main__.py', '_aes.py', '_compat.py', 'cli.py',
-          'codec.py', 'codec_py.py', 'container.py', 'crypto.py', 'errors.py',
+          '_term.py', 'codec.py', 'codec_py.py', 'container.py', 'crypto.py', 'errors.py',
           'ext.py', 'geotiff.py', 'imgio.py', 'ml.py', 'mosaic.py', 'rc.py',
-          'rebase.py', 'server.py', 'tiering.py', 'tiled.py', 'tiled_read.py',
+          'rebase.py', 'server.py', 'target.py', 'tiering.py', 'tiled.py', 'tiled_read.py',
           'tiles.py', 'vrt.py']
 
 

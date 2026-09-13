@@ -1,6 +1,6 @@
 {
   "name": "owlg",
-  "version": "4.0.0",
+  "version": "0.1.0",
   "description": "Reader for OWLG (Optimized Owl GeoTIFF) and OWLGT web tile pyramids - near-lossless raster with a hard per-pixel error bound. Zero dependencies.",
   "type": "module",
   "main": "src/index.mjs",

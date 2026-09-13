@@ -20,11 +20,13 @@ warnings.filterwarnings('ignore')
 from . import imgio as _io
 from .codec import enc_tile, dec_tile
 from . import crypto as cy
+from .errors import OwlgError
+from . import _term as T
 
 MAGIC = b'OWLG'; VERSION = 4
 DEFAULT_TILE = 512
-AVIF_Q = [95, 90, 85, 75, 60]
-WEBP_Q = [95, 90, 85, 75, 60]
+AVIF_Q = _io.QUALITY_LADDERS['avif']
+WEBP_Q = _io.QUALITY_LADDERS['webp']
 
 
 def _enc_base(a, codec, q):
@@ -83,37 +85,79 @@ class _Writer:
     def close(self): self.f.close()
 
 
-def _pick_quality(src, coded, tile, codec, delta, qlist, nsample=6, groups=None):
-    """Sample a handful of scattered tiles to pick the best base quality."""
-    import rasterio
-    with rasterio.open(src) as ds:
-        H, W = ds.height, ds.width
-        nty, ntx = (H + tile - 1)//tile, (W + tile - 1)//tile
-        picks = []
-        step = max(1, (nty * ntx) // max(nsample, 1))
-        for k in range(0, nty * ntx, step):
-            picks.append((k // ntx, k % ntx))
-            if len(picks) >= nsample: break
-        if groups is None: groups = band_groups(coded)
-        buf = np.zeros(len(coded)*tile*tile*3 + 65536, np.uint8)
-        best = None
-        for q in qlist:
-            tot = 0
-            for (ty, tx) in picks:
+class _Sampler:
+    """A handful of scattered tiles, read once, on which base quality and
+    delta can be chosen cheaply. estimate() scales the sampled bytes up to the
+    whole level 0; the pyramid (~15%) is added on top by callers that need it."""
+    def __init__(self, src, coded, tile, groups=None, nsample=6):
+        import rasterio
+        self.groups = groups if groups is not None else band_groups(coded)
+        self.tiles = []
+        with rasterio.open(src) as ds:
+            H, W = ds.height, ds.width
+            nty, ntx = (H + tile - 1)//tile, (W + tile - 1)//tile
+            step = max(1, (nty * ntx) // max(nsample, 1))
+            for k in range(0, nty * ntx, step):
+                ty, tx = k // ntx, k % ntx
                 y0, x0 = ty*tile, tx*tile
                 th, tw = min(tile, H-y0), min(tile, W-x0)
-                if th <= 0 or tw <= 0: continue
-                a = ds.read(indexes=[b+1 for b in coded],
-                            window=((y0, y0+th), (x0, x0+tw)))
-                hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
-                blobs = enc_groups(hwc, codec, q, groups)
-                tot += sum(len(bl) for bl in blobs)
-                if delta > 0:
-                    Bs = dec_groups(blobs, codec, groups)
-                    C = np.ascontiguousarray(a)
-                    tot += enc_tile(C, Bs, 0, th, 0, tw, delta, buf)
-            if best is None or tot < best[1]: best = (q, tot)
-        return best[0]
+                if th > 0 and tw > 0:
+                    self.tiles.append(np.ascontiguousarray(
+                        ds.read(indexes=[b+1 for b in coded],
+                                window=((y0, y0+th), (x0, x0+tw)))))
+                if len(self.tiles) >= nsample: break
+        self.total_px = H * W
+        self.sampled_px = sum(t.shape[1] * t.shape[2] for t in self.tiles)
+        self.buf = np.zeros(len(coded)*tile*tile*3 + 65536, np.uint8)
+
+    def sampled_bytes(self, codec, q, delta):
+        tot = 0
+        for a in self.tiles:
+            hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
+            blobs = enc_groups(hwc, codec, q, self.groups)
+            tot += sum(len(bl) for bl in blobs)
+            # The correction layer exists at delta 0 too (lossy base, bound 0),
+            # and there it is the dominant cost: never skip it.
+            Bs = dec_groups(blobs, codec, self.groups)
+            tot += enc_tile(a, Bs, 0, a.shape[1], 0, a.shape[2], delta, self.buf)
+        return tot
+
+    def estimate(self, codec, q, delta):
+        """Estimated level-0 bytes for the whole raster."""
+        return self.sampled_bytes(codec, q, delta) * self.total_px / max(self.sampled_px, 1)
+
+    def best_q(self, codec, qlist, delta):
+        return min(qlist, key=lambda q: self.sampled_bytes(codec, q, delta))
+
+
+def _pick_quality(src, coded, tile, codec, delta, qlist, nsample=6, groups=None):
+    """Sample a handful of scattered tiles to pick the best base quality."""
+    return _Sampler(src, coded, tile, groups, nsample).best_q(codec, qlist, delta)
+
+
+def scan_source(src):
+    """Dimensions, geo metadata and constant-band detection without loading the
+    raster: (W, H, B, meta, const, coded)."""
+    import rasterio
+    with rasterio.open(src) as ds:
+        if ds.dtypes[0] != 'uint8':
+            raise OwlgError(f'OWLG handles uint8; this file is {ds.dtypes[0]}')
+        W, H, B = ds.width, ds.height, ds.count
+        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
+                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
+                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+        const, coded = {}, []
+        for b in range(B):
+            mn, mx = None, None
+            for _, win in ds.block_windows(b + 1):
+                a = ds.read(b + 1, window=win)
+                m0, m1 = int(a.min()), int(a.max())
+                mn = m0 if mn is None else min(mn, m0)
+                mx = m1 if mx is None else max(mx, m1)
+                if mn != mx: break
+            if mn == mx: const[str(b)] = int(mn)
+            else: coded.append(b)
+    return W, H, B, meta, const, coded
 
 
 def _cap_gdal_cache(mb=256):
@@ -130,29 +174,12 @@ def _cap_gdal_cache(mb=256):
 
 def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                 overviews=True, min_overview=256, password=None,
-                kdf_iters=cy.DEFAULT_ITERS, verbose=True, gdal_cache_mb=256):
+                kdf_iters=cy.DEFAULT_ITERS, verbose=True, gdal_cache_mb=256,
+                overview_q=None):
     _cap_gdal_cache(gdal_cache_mb)
     import rasterio
     t0 = time.time()
-    with rasterio.open(src) as ds:
-        if ds.dtypes[0] != 'uint8':
-            raise ValueError(f'OWLG v4 handles uint8; this file is {ds.dtypes[0]}')
-        W, H, B = ds.width, ds.height, ds.count
-        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
-                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
-                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
-        # constant bands: detect them from per-band statistics, without loading it all
-        const, coded = {}, []
-        for b in range(B):
-            mn, mx = None, None
-            for _, win in ds.block_windows(b + 1):
-                a = ds.read(b + 1, window=win)
-                m0, m1 = int(a.min()), int(a.max())
-                mn = m0 if mn is None else min(mn, m0)
-                mx = m1 if mx is None else max(mx, m1)
-                if mn != mx: break
-            if mn == mx: const[str(b)] = int(mn)
-            else: coded.append(b)
+    W, H, B, meta, const, coded = scan_source(src)
     nb = len(coded)
     groups = band_groups(coded)
     if base == 'auto':
@@ -168,9 +195,9 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
         except Exception:
             base = 'webp'
         if verbose:
-            print(f"  --base auto resolved to {base}")
+            print(T.dim(f"  --base auto resolved to {base}"))
     if base not in ('webp', 'avif', 'jxl'):
-        raise ValueError(f"unknown base codec: {base!r} (use webp, avif, jxl or auto)")
+        raise OwlgError(f"unknown base codec: {base!r} (use webp, avif, jxl or auto)")
     codec = 'jxl_lossless' if (delta == 0 and base == 'jxl') else base
     if delta == 0 and base in ('webp', 'avif'):
         codec = base            # lossy base + delta=0 correction -> still bit-exact
@@ -178,8 +205,10 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
         qlist = WEBP_Q if codec == 'webp' else AVIF_Q
         q = _pick_quality(src, coded, tile, codec, delta, qlist, groups=groups)
     if verbose:
-        print(f"  {W}x{H}x{B} uint8  tile {tile}px  base={codec} q={q}  delta=+/-{delta}")
-        if const: print(f"  constant bands dropped: {const}")
+        print(f"  {T.num(f'{W}x{H}x{B}')} uint8  raw {T.mb(W*H*B)}  {T.dim(f'layout tiled, {tile}px tiles')}")
+        print(f"  base {T.key(codec)} q={T.num(q)}  {T.bound(delta)}")
+        if const: print(T.dim(f"  constant bands dropped: {const}"))
+    prog = T.Progress('level 0 tile rows', 0) if verbose else None
 
     key = prefix = salt = None
     if password:
@@ -198,6 +227,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     _h.update(json.dumps(dict(w=W, h=H, bands=B, tile=tile, const=const,
                               coded=coded), separators=(',', ':'),
                          sort_keys=True).encode())
+    if prog: prog.total = nty
     with rasterio.open(src) as ds:
         for ty in range(nty):
             for tx in range(ntx):
@@ -216,15 +246,18 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                 C = np.ascontiguousarray(a)
                 n = enc_tile(C, Bs, 0, th, 0, tw, delta, buf)
                 corr_idx[k] = w.add(buf[:n].tobytes()); nbytes_c += n
-            if verbose and nty > 4 and (ty % max(1, nty//10) == 0):
-                print(f"    level 0: tile row {ty+1}/{nty}", flush=True)
+            if prog and nty > 4: prog.update(ty + 1)
     levels.append(dict(w=W, h=H, nty=nty, ntx=ntx, base=base_idx, corr=corr_idx))
     if verbose:
-        print(f"  level 0: {nty*ntx} tile" + ("s" if nty*ntx != 1 else "") + f", base {nbytes_b/1e6:.2f} MB + correction {nbytes_c/1e6:.2f} MB")
+        print(f"  level 0: {T.num(nty*ntx)} tile" + ("s" if nty*ntx != 1 else "")
+              + T.dim(f", base {nbytes_b/1e6:.2f} MB + correction {nbytes_c/1e6:.2f} MB"))
 
     # ---------- overview: read the previous level back, downsample 2x ----------
     if overviews:
         w.close()
+        # Overviews are display-only (no bound), so a lower quality is free.
+        # A lossless JXL base keeps its own quality: there is no knob to turn.
+        oq = q if codec == 'jxl_lossless' else min(int(q), overview_q or _io.OVERVIEW_Q)
         lv = 0
         while max(levels[lv]['w'], levels[lv]['h']) > min_overview:
             prev = levels[lv]
@@ -245,7 +278,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                     a = _box2(src_arr, th, tw)
                     hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
                     idxs = []
-                    for blob in enc_groups(hwc, codec, q, groups):
+                    for blob in enc_groups(hwc, codec, oq, groups):
                         if key is not None:
                             blob = cy.seal(key, prefix, len(w.dir) + len(newdir) + 1, blob)
                         f.write(blob)
@@ -257,7 +290,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
             w.dir.extend(newdir)
             levels.append(dict(w=cw, h=ch, nty=cnty, ntx=cntx, base=cbase, corr=None))
             if verbose:
-                print(f"  overview {lv+1}: {cw}x{ch}, {cnty*cntx} tile" + ("s" if cnty*cntx != 1 else "") + f", {tot/1e6:.2f} MB")
+                print(T.dim(f"  overview {lv+1}: {cw}x{ch}, {cnty*cntx} tile" + ("s" if cnty*cntx != 1 else "") + f", q={oq}, {tot/1e6:.2f} MB"))
             lv += 1
     else:
         w.close()
@@ -283,8 +316,9 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     tot = os.path.getsize(dst)
     raw = W*H*B
     if verbose:
-        print(f"  -> {dst}: {tot/1e6:.3f} MB  {raw/tot:.2f}x  "
-              f"{len(levels)} levels  ({time.time()-t0:.1f}s)")
+        enc = ' ' + T.tag('ENCRYPTED') if password else ''
+        print(f"  -> {T.path(dst)}: {T.mb(tot)}  {T.ratio(raw/tot)}  {T.bound(delta)}{enc}"
+              f"  {T.dim(f'{len(levels)} levels ({time.time()-t0:.1f}s)')}")
     return dict(total=tot, ratio=raw/tot, levels=len(levels))
 
 

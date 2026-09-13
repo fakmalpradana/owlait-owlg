@@ -14,12 +14,13 @@ warnings.filterwarnings('ignore')
 from . import imgio as _io
 from .codec import enc_tile, dec_tile
 from . import crypto as cy
+from . import _term as T
 
 MAGIC = b'OWLG'; VERSION = 3
 REC_MAGIC = b'OWLR'
 LEGACY_MAGIC = b'GTZ1'
-AVIF_Q = [95, 90, 85, 75, 60, 45]
-WEBP_Q = [95, 90, 85, 75, 60]
+AVIF_Q = _io.QUALITY_LADDERS['avif']
+WEBP_Q = _io.QUALITY_LADDERS['webp']
 # The default base is WebP: decodable by practically every GDAL, Pillow, Qt, and
 # browser build out there. On the test data it costs only +4.8% over AVIF.
 DEFAULT_BASE = 'webp'
@@ -53,32 +54,60 @@ def _dec_base(buf, codec):
     return np.ascontiguousarray(np.asarray(d)[..., :3].astype(np.uint8))
 
 # ------------------------------- WRITE -------------------------------
+def _build(C, coded, groups, cod, qq, delta, tile, wbuf=None):
+    """Base blobs + correction blobs for the coded bands C at (codec, q, delta).
+    Returns (base_blobs, corr_blobs, total_bytes). Exact, not an estimate."""
+    nb, H, W = C.shape
+    if wbuf is None:
+        wbuf = np.zeros(nb*tile*tile*3 + 65536, np.uint8)
+    bl, decs = [], []
+    for g in groups:
+        idx = [coded.index(x) for x in g]
+        a = np.ascontiguousarray(C[idx].transpose(1, 2, 0))
+        if a.shape[2] < 3: a = _pad_rgb(a)
+        blob = _enc_base(a, cod, qq); bl.append(blob)
+        decs.append(_dec_base(blob, cod)[:, :, :len(g)])
+    BASE = np.ascontiguousarray(np.concatenate([d.transpose(2,0,1) for d in decs], 0)[:nb])
+    tb = []
+    for y0 in range(0, H, tile):
+        for x0 in range(0, W, tile):
+            n = enc_tile(C, BASE, y0, min(y0+tile, H), x0, min(x0+tile, W), delta, wbuf)
+            tb.append(wbuf[:n].tobytes())
+    return bl, tb, sum(map(len, bl)) + sum(map(len, tb))
+
+
 def _rio():
     import rasterio; return rasterio
+
+def load_source(src):
+    """Read a uint8 GeoTIFF whole: (A (B,H,W), meta, const, coded, groups)."""
+    rasterio = _rio()
+    with rasterio.open(src) as ds:
+        A = ds.read()
+        if ds.dtypes[0] != 'uint8':
+            raise OwlgError(f'OWLG handles uint8; this file is {ds.dtypes[0]}')
+        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
+                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
+                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+    const, coded = {}, []
+    for b in range(A.shape[0]):
+        u = np.unique(A[b])
+        (const.__setitem__(str(b), int(u[0])) if u.size == 1 else coded.append(b))
+    groups = [coded[i:i+3] for i in range(0, len(coded), 3)]
+    return A, meta, const, coded, groups
+
 
 def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
                password=None, kdf_iters=cy.DEFAULT_ITERS, recovery=False, verbose=True,
                extra_header=None):
     t0 = time.time()
-    rasterio = _rio()
-    with rasterio.open(src) as ds:
-        A = ds.read()
-        if ds.dtypes[0] != 'uint8':
-            raise OwlgError(f'OWLG v2 handles uint8; this file is {ds.dtypes[0]}')
-        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
-                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
-                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+    A, meta, const, coded, groups = load_source(src)
     B, H, W = A.shape; RAW = A.nbytes
-    const, coded = {}, []
-    for b in range(B):
-        u = np.unique(A[b])
-        (const.__setitem__(str(b), int(u[0])) if u.size == 1 else coded.append(b))
     C = np.ascontiguousarray(A[coded]); nb = len(coded)
     sha = hashlib.sha256(np.ascontiguousarray(A).tobytes()).hexdigest()
-    groups = [coded[i:i+3] for i in range(0, nb, 3)]
     if verbose:
-        print(f"  {W}x{H}x{B} uint8  RAW={RAW/1e6:.2f} MB")
-        if const: print(f"  constant bands dropped: {const} (-{len(const)*H*W/1e6:.2f} MB)")
+        print(f"  {T.num(f'{W}x{H}x{B}')} uint8  raw {T.mb(RAW)}  {T.dim('layout flat')}")
+        if const: print(T.dim(f"  constant bands dropped: {const} (-{len(const)*H*W/1e6:.2f} MB)"))
 
     # A base codec that is itself lossless (JPEG XL) needs no correction layer
     # at all, which is the smallest lossless result when the decoder is present.
@@ -101,21 +130,7 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
         nty, ntx = (H+tile-1)//tile, (W+tile-1)//tile
         wbuf = np.zeros(nb*tile*tile*3 + 65536, np.uint8)
         def build(cod, qq):
-            bl, decs = [], []
-            for g in groups:
-                idx = [coded.index(x) for x in g]
-                a = np.ascontiguousarray(C[idx].transpose(1, 2, 0))
-                if a.shape[2] < 3: a = _pad_rgb(a)
-                blob = _enc_base(a, cod, qq); bl.append(blob)
-                decs.append(_dec_base(blob, cod)[:, :, :len(g)])
-            BASE = np.ascontiguousarray(np.concatenate([d.transpose(2,0,1) for d in decs], 0)[:nb])
-            tb = []
-            for ty in range(nty):
-                for tx in range(ntx):
-                    y0,y1 = ty*tile, min((ty+1)*tile,H); x0,x1 = tx*tile, min((tx+1)*tile,W)
-                    n = enc_tile(C, BASE, y0, y1, x0, x1, delta, wbuf)
-                    tb.append(wbuf[:n].tobytes())
-            return bl, tb, sum(map(len, bl)) + sum(map(len, tb))
+            return _build(C, coded, groups, cod, qq, delta, tile, wbuf)
         if codec not in (None, 'auto'):
             if q is None:
                 raise OwlgError("--codec also needs --q (it names an exact codec and "
@@ -129,11 +144,14 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
             elif _b == 'jxl':  cands = [('webp', x) for x in WEBP_Q]
             else: raise OwlgError(f'unknown base codec: {_b}')
         best = None
-        for cod, qq in cands:
+        prog = T.Progress(f"searching {cands[0][0]} quality", len(cands)) if verbose and len(cands) > 1 else None
+        for i, (cod, qq) in enumerate(cands):
             bl, tb, sz = build(cod, qq)
-            if verbose: print(f"    try {cod} q={qq}: {sz/1e6:.3f} MB")
             if best is None or sz < best[2]: best = (bl, tb, sz, cod, qq)
+            if prog: prog.update(i + 1, f"q={qq}: {sz/1e6:.3f} MB")
         bblobs, tblobs, _, cod, qq = best; used = (cod, qq)
+        if verbose:
+            print(f"  base {T.key(cod)} q={T.num(qq)}  {T.dim(f'base {sum(map(len,bblobs))/1e6:.3f} MB + correction {sum(map(len,tblobs))/1e6:.3f} MB')}")
         mode = 'lossless' if delta == 0 else 'nearlossless'
         rblobs = []
         if recovery:
@@ -150,7 +168,7 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
                     n = enc_tile(C, rec, y0, y1, x0, x1, 0, wbuf)
                     rblobs.append(wbuf[:n].tobytes())
             if verbose:
-                print(f"  recovery tier: +{sum(map(len,rblobs))/1e6:.3f} MB -> revert becomes bit-identical")
+                print(f"  recovery tier: +{sum(map(len,rblobs))/1e6:.3f} MB -> {T.ok('revert becomes bit-identical')}")
 
     hdr = dict(v=VERSION, mode=mode, w=W, h=H, bands=B, delta=int(delta),
                codec=used[0], q=used[1], tile=tile, const=const, coded=coded,
@@ -161,9 +179,9 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
     _write_file(dst, hdr, bblobs, tblobs, rblobs, password, kdf_iters)
     tot = os.path.getsize(dst)
     if verbose:
-        enc = ' ENCRYPTED' if password else ''
-        print(f"  -> {dst}: {tot/1e6:.3f} MB  {RAW/tot:.2f}x  "
-              f"{'LOSSLESS' if delta==0 else f'bound=+/-{delta} DN'}{enc}  ({time.time()-t0:.1f}s)")
+        enc = ' ' + T.tag('ENCRYPTED') if password else ''
+        print(f"  -> {T.path(dst)}: {T.mb(tot)}  {T.ratio(RAW/tot)}  {T.bound(delta)}{enc}"
+              f"  {T.dim(f'({time.time()-t0:.1f}s)')}")
     return dict(total=tot, ratio=RAW/tot, base=sum(map(len,bblobs)), corr=sum(map(len,tblobs)))
 
 def _write_file(dst, hdr, bblobs, tblobs, rblobs, password, iters):

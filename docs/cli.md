@@ -65,6 +65,7 @@ never `owlg info f.owlg -P secret`.
 | `--password`, `-P` | string | none | Passphrase for an encrypted file, given inline. |
 | `--ask-password`, `-A` | flag | off | Prompt for the passphrase on the terminal (`getpass`), so it never reaches the shell history or the process table. |
 | `OWLG_KEY` | env var | unset | Passphrase taken from the environment. |
+| `--no-color` | flag | off | Plain output. Colour is on only when stdout is a terminal; `NO_COLOR=1` also disables it and `OWLG_COLOR=always` forces it (for CI logs that render ANSI). The words never change, only the styling, so every example on this page is what a pipe or a test sees. |
 
 Resolution order is `-P`, then `OWLG_KEY`, then `-A`; `owlg encode --encrypt` prompts
 even without `-A`, because a passphrase is mandatory there. `owlg vrt` also exports the
@@ -128,12 +129,14 @@ GeoTIFF (uint8) to `.owlg`.
 | `src` | path | required | Source GeoTIFF. Must be uint8; anything else is refused. |
 | `dst` | path | required | Output `.owlg`. |
 | `--delta` | int | `0` | Hard per-pixel error bound in DN. `0` = lossless, revert is bit-identical. |
+| `--target` | ratio | none | A size goal against the raw pixels, `20` or `20x`. The encoder searches the smallest delta on its ladder (1…32) that reaches it, prints the probes, then encodes with that delta. The ratio is the goal; the delta it lands on is the promise, written to the header like any other. |
 | `--layout` | `auto`\|`tiled`\|`flat` | `auto` | Storage layout. `auto` = tiled above 16 MPixel, flat below; forced to flat by `--recovery`. |
 | `--base` | `webp`\|`avif`\|`auto` | `webp` | Base-layer codec. `webp` is portable (every GDAL, Pillow, Qt and browser build decodes it); `avif` is smaller; `auto` picks per layout — see the note below. |
 | `--q` | int | auto-picked | Base-layer quality. Omit it and the encoder searches a quality ladder and keeps the smallest total. |
 | `--tile` | int | `512` tiled, `1024` flat | Tile edge in pixels. |
 | `--no-overviews` | flag | overviews on | Skip the internal pyramid. Tiled layout only. |
 | `--min-overview` | int | `256` | Stop halving once a level's longest edge is at or below this. |
+| `--overview-q` | int | `50` | Base quality of the overview levels. They carry no bound (display only), so a lower quality is free; never raised above the level-0 quality. |
 | `--encrypt` | flag | off | AES-256-GCM over every blob and over the header itself. |
 | `--iters` | int | `600000` | PBKDF2-SHA256 iterations for the key derivation. |
 | `--recovery` | flag | off | Add a recovery tier so a near-lossless file can still revert bit-identically. Flat layout only. |
@@ -143,34 +146,75 @@ Lossless, flat (0.57 MPixel, so `auto` chose flat):
 
 ```
 $ owlg encode rgb_small.tif rgb_ll.owlg
-  791x718x3 uint8  RAW=1.70 MB
-  -> rgb_ll.owlg: 0.587 MB  2.90x  LOSSLESS  (0.8s)
+  791x718x3 uint8  raw 1.704 MB  layout flat
+    searching webp quality 1/7 q=95: 0.681 MB
+    searching webp quality 2/7 q=90: 0.675 MB
+    ...
+    searching webp quality 7/7 q=40: 0.739 MB
+  base webp q=90  base 0.132 MB + correction 0.543 MB
+  -> rgb_ll.owlg: 0.676 MB  2.52x  LOSSLESS  (0.9s)
 ```
+
+Lossless here is a lossy WebP base plus a correction layer bounded at zero — that is
+what keeps the file portable. `--base jxl` gives a JPEG XL lossless base instead (0.587
+MB on this raster) for readers that have a JXL decoder. On a terminal the quality
+search is a single progress bar; piped, it is the lines above.
 
 Near-lossless at ±3 DN. The quality ladder is searched and the smallest total wins:
 
 ```
 $ owlg encode rgb_small.tif rgb.owlg --delta 3
-  791x718x3 uint8  RAW=1.70 MB
-    try webp q=95: 0.301 MB
-    try webp q=90: 0.287 MB
-    try webp q=85: 0.287 MB
-    try webp q=75: 0.296 MB
-    try webp q=60: 0.303 MB
-  -> rgb.owlg: 0.289 MB  5.91x  bound=+/-3 DN  (1.1s)
+  791x718x3 uint8  raw 1.704 MB  layout flat
+    searching webp quality 1/7 q=95: 0.295 MB
+    searching webp quality 2/7 q=90: 0.284 MB
+    searching webp quality 3/7 q=85: 0.284 MB
+    searching webp quality 4/7 q=75: 0.293 MB
+    searching webp quality 5/7 q=60: 0.299 MB
+    searching webp quality 6/7 q=50: 0.305 MB
+    searching webp quality 7/7 q=40: 0.313 MB
+  base webp q=90  base 0.132 MB + correction 0.152 MB
+  -> rgb.owlg: 0.285 MB  5.98x  bound +/-3 DN  (0.7s)
 ```
+
+A size goal instead of a bound. `--target 8x` asks for a file at least eight times
+smaller than the raw pixels; the encoder binary-searches its delta ladder, shows each
+probe, and settles on the smallest bound that gets there — the header then says
+`delta: 6`, exactly as if you had typed it:
+
+```
+$ owlg encode rgb_small.tif rgb_t.owlg --target 8x
+  searching the smallest delta that gives 8x vs raw (base webp)
+    delta 8  q=85  -> 0.164 MB   10.4x
+    delta 3  q=90  -> 0.288 MB    5.9x
+    delta 5  q=85  -> 0.216 MB    7.9x
+    delta 6  q=85  -> 0.195 MB    8.7x
+  -> delta 6 (+/-6 DN) is the smallest bound that reaches 8x
+  791x718x3 uint8  raw 1.704 MB  layout flat
+  base webp q=85  base 0.106 MB + correction 0.085 MB
+  -> rgb_t.owlg: 0.191 MB  8.92x  bound +/-6 DN  (0.1s)
+  target 8x reached: 8.9x with a guaranteed bound of +/-6 DN
+```
+
+The search never trades the bound for the ratio silently: if even delta 32 falls
+short, it says so and encodes at 32. On a drone orthophoto `--target 20x --base avif`
+lands on +/-14 DN (22.5x); see the README tables.
 
 Tiled and lossless. Note that lossless here is a lossy WebP base plus a correction
 stream that pulls every sample back to exactly the original value:
 
 ```
 $ owlg encode rgb_small.tif rgb_tiled.owlg --layout tiled --delta 0
-  791x718x3 uint8  tile 512px  base=webp q=60  delta=+/-0
-  level 0: 4 tiles, base 0.07 MB + correction 0.65 MB
-  overview 1: 396x359, 1 tile, 0.02 MB
-  overview 2: 198x180, 1 tile, 0.01 MB
-  -> rgb_tiled.owlg: 0.746 MB  2.28x  3 levels  (1.1s)
+  791x718x3 uint8  raw 1.704 MB  layout tiled, 512px tiles
+  base webp q=90  LOSSLESS
+  level 0: 4 tiles, base 0.13 MB + correction 0.54 MB
+  overview 1: 396x359, 1 tile, q=50, 0.02 MB
+  overview 2: 198x180, 1 tile, q=50, 0.00 MB
+  -> rgb_tiled.owlg: 0.696 MB  2.45x  LOSSLESS  3 levels (1.1s)
 ```
+
+The overview levels are encoded at `--overview-q` (default 50) whatever level 0 uses:
+they carry no bound, so quality there is only a matter of how the zoomed-out view
+looks, and 50 is indistinguishable at overview scale.
 
 On an 18 MPixel raster `auto` selects tiled without being asked, and encoding streams
 tile row by tile row:
@@ -217,12 +261,12 @@ Recovery tier — near-lossless for everyday use, with the exact residual kept a
 
 ```
 $ owlg encode rgb_small.tif rgb_rec.owlg --delta 3 --recovery
-  791x718x3 uint8  RAW=1.70 MB
-    try webp q=95: 0.301 MB
+  791x718x3 uint8  raw 1.704 MB  layout flat
+    searching webp quality 1/7 q=95: 0.295 MB
     ...
-    try webp q=60: 0.303 MB
+  base webp q=90  base 0.132 MB + correction 0.152 MB
   recovery tier: +0.402 MB -> revert becomes bit-identical
-  -> rgb_rec.owlg: 0.691 MB  2.47x  bound=+/-3 DN  (1.2s)
+  -> rgb_rec.owlg: 0.687 MB  2.48x  bound +/-3 DN  (0.8s)
 ```
 
 Encryption. Header, blob directory, CRS and transform are all inside the ciphertext;
@@ -231,7 +275,7 @@ only the small envelope stays readable so the file remains identifiable:
 ```
 $ owlg -P 'a long passphrase' encode rgb_small.tif secret.owlg --delta 2 --encrypt
   ...
-  -> secret.owlg: 0.353 MB  4.83x  bound=+/-2 DN ENCRYPTED  (1.5s)
+  -> secret.owlg: 0.351 MB  4.85x  bound +/-2 DN ENCRYPTED  (1.5s)
 ```
 
 **When to use which.** Archival master, or any file that must survive a bit-exact audit:
@@ -261,9 +305,9 @@ people who will open the file, name it explicitly.
 
 ```
 $ owlg decode rgb.owlg rgb_out.tif
--> rgb_out.tif
+-> rgb_out.tif  0.749 MB
 $ owlg decode rgb.owlg rgb_fast.tif --fast
--> rgb_fast.tif
+-> rgb_fast.tif  0.686 MB (base layer only, outside the bound)
 ```
 
 `--check-sha` is a real gate, not a warning. On a near-lossless file the decoded pixels
@@ -299,50 +343,69 @@ the GeoTIFF to someone who will treat it as the original.
 
 ## `info`
 
-Print the header and a size breakdown without decoding any pixels. No flags; takes the
-global passphrase options for encrypted files.
+A key/value sheet about the file, without decoding any pixels. Takes the global
+passphrase options for encrypted files.
 
-Flat (v3) files report the blob tiers:
+| Flag | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `--json` | flag | off | Print the raw header JSON (minus the blob directory) and nothing else, for scripts. |
+
+Flat (v3) files list their layers:
 
 ```
 $ owlg info rgb.owlg
+── rgb.owlg ────────────────────────────────────────────────
+format         : OWLG v3 flat
+raster         : 791 x 718 x 3 uint8  raw 1.70 MB
+size           : 0.285 MB  5.98x vs raw
+guarantee      : bound +/-3 DN  every pixel of every band
+base codec     : webp q=90
+crs            : WGS 84 / UTM zone 18N EPSG:32618
+pixel size     : 300.038 x 300.042  origin (101985.000, 2826915.000)
+encrypted      : no
+layer          bytes
+──────────  ────────  ──────
+base layer  0.132 MB  1 blob
+correction  0.152 MB  1 tile
+sha256         : 6d212801201b0e26...
+```
+
+Tiled (v4) files show the pyramid level by level and whether the tile-scan digest is
+stored:
+
+```
+$ owlg info rgb_tiled.owlg
+── rgb_tiled.owlg ──────────────────────────────────────────
+format         : OWLG v4 tiled + pyramid
+raster         : 791 x 718 x 3 uint8  raw 1.70 MB
+size           : 0.696 MB  2.45x vs raw
+guarantee      : LOSSLESS  revert is bit-identical
+base codec     : webp q=90
+crs            : WGS 84 / UTM zone 18N EPSG:32618
+pixel size     : 300.038 x 300.042  origin (101985.000, 2826915.000)
+encrypted      : no
+tiles          : 512 px, 6 tiles, 10 blobs
+pyramid  size       tiles     bytes  content
+───────  ─────────  ─────  ────────  ─────────────────
+level 0  791 x 718  2 x 2  0.675 MB  base + correction
+level 1  396 x 359  1 x 1  0.015 MB  base only
+level 2  198 x 180  1 x 1  0.004 MB  base only
+tile digest    : stored eb33364349408284...
+```
+
+Only level 0 carries the error guarantee. The overview levels are averages of the
+already-corrected data, stored base-only for display. A file produced by `rebase`
+additionally shows a `vs original` line with the bound against the original GeoTIFF.
+
+```
+$ owlg info rgb.owlg --json | head -6
 {
  "v": 3,
  "mode": "nearlossless",
  "w": 791,
  "h": 718,
  "bands": 3,
- "delta": 3,
- "codec": "webp",
- "q": 90,
- "tile": 1024,
- ... header JSON trimmed ...
- "n_base": 1,
- "n_corr": 1,
- "n_rec": 0,
- "encrypted": false
-}
-file 0.289 MB | base 0.136 | correction 0.151 | blobs 2 | encrypted False
-bit-identical revert: NO - this file is near-lossless +/-3 DN
 ```
-
-Tiled (v4) files report the pyramid level by level and whether the tile-scan digest is
-stored:
-
-```
-$ owlg info rgb_tiled.owlg
-... header JSON trimmed ...
-file 0.746 MB | ratio 2.28x | tile 512px | 6 tiles | blobs 10 | encrypted False
-pyramid:
-  level 0: 791x718  2x2 tiles     0.721 MB  base+correction
-  level 1: 396x359  1x1 tiles     0.018 MB  base only
-  level 2: 198x180  1x1 tiles     0.005 MB  base only
-bit-identical revert: YES (lossless mode)
-tile-scan digest: stored (eb33364349408284...)
-```
-
-Only level 0 carries the error guarantee. The overview levels are averages of the
-already-corrected data, stored base-only for display.
 
 ## `verify`
 
@@ -356,11 +419,14 @@ is safe on a 100 GB file; for v3 files both rasters are loaded.
 $ owlg verify rgb.owlg rgb_small.tif
 shape  : same
 error  : max=3 (bound +/-3) -> BOUND PROVEN
-         mean|e|=1.0000  rmse=1.4868  pixels changed=53.79%
+         mean|e|=0.9965  rmse=1.4832  pixels changed=53.71%
 geo    : transform same, crs same
 $ echo $?
 0
 ```
+
+On a terminal the verdict is green, `*** VIOLATED ***` red, and a large tiled file shows
+a progress bar while its tile rows stream through.
 
 On a tiled lossless file `verify` also checks the stored tile-scan digest, which proves
 two separate things: that the file really was made from *this* GeoTIFF, and — in lossless
@@ -372,7 +438,7 @@ shape  : same  (0.6 MPixel x 3 bands = 1.7 M samples checked)
 error  : max=0 (bound +/-0) -> BOUND PROVEN
 digest : original pixels MATCH (eb33364349408284...) -> this file really came from rgb_small.tif
          decoded pixels MATCH -> revert is bit-identical
-lossless: bit-identical to the original = True
+lossless : bit-identical to the original = True
 geo    : transform same, crs same
 ```
 
@@ -382,8 +448,8 @@ the wrong original demonstrates both the message and the exit code:
 ```
 $ owlg verify rgb.owlg other.tif
 shape  : same
-error  : max=43 (bound +/-3) -> *** VIOLATED ***
-         mean|e|=1.6853  rmse=5.5099  pixels changed=54.46%
+error  : max=129 (bound +/-3) -> *** VIOLATED ***
+         mean|e|=3.1590  rmse=6.1369  pixels changed=58.60%
 geo    : transform same, crs same
 $ echo $?
 2
@@ -429,7 +495,7 @@ made; what the application reads is still the `.owlg`, one window at a time.
 ```
 $ owlg vrt rgb_tiled.owlg
 …/rgb_tiled.owlg.vrt
-  disk footprint: 0.746 MB (.owlg) + 4.1 kB (.vrt) — no GeoTIFF copy
+  disk footprint: 0.696 MB (.owlg) + 4.4 kB (.vrt) — no GeoTIFF copy
   usage: export GDAL_VRT_ENABLE_PYTHON=YES  then open the .vrt in QGIS/gdalinfo
 ```
 
@@ -475,7 +541,7 @@ Three positional arguments; no flags.
 
 ```
 $ owlg split rgb_rec.owlg light.owlg rec.owlr
--> light.owlg (0.289 MB)  +  rec.owlr (0.402 MB)
+-> light.owlg (0.285 MB, distribute)  +  rec.owlr (0.402 MB, archive)
 ```
 
 The light half is byte-for-byte the near-lossless file you would have got from
@@ -501,7 +567,7 @@ Rejoin a light `.owlg` and its `.owlr`. Three positional arguments; no flags.
 
 ```
 $ owlg join light.owlg rec.owlr full.owlg
--> full.owlg (0.691 MB, revert is now bit-identical)
+-> full.owlg (0.687 MB, revert is now bit-identical)
 ```
 
 The `.owlr` records the parent's SHA-256, so pairing the wrong two files is caught rather
@@ -533,13 +599,12 @@ combined guarantee explicitly:
 $ owlg rebase rgb_avif.owlg rgb_portable.owlg --base webp --delta 1
   source: base=avif delta=+/-2
   target: base=webp delta=+/-1 against the decoded source content
-  791x718x3 uint8  RAW=1.70 MB
-    try webp q=95: 0.484 MB
-    try webp q=90: 0.463 MB
-    try webp q=85: 0.462 MB
-    try webp q=75: 0.476 MB
-    try webp q=60: 0.485 MB
-  -> rgb_portable.owlg: 0.463 MB  3.68x  bound=+/-1 DN  (1.0s)
+  791x718x3 uint8  raw 1.704 MB  layout flat
+    searching webp quality 1/7 q=95: 0.477 MB
+    ...
+    searching webp quality 7/7 q=40: 0.500 MB
+  base webp q=90  base 0.134 MB + correction 0.326 MB
+  -> rgb_portable.owlg: 0.462 MB  3.69x  bound +/-1 DN  (0.7s)
   WARNING: the guarantee vs the ORIGINAL GeoTIFF is now +/-3 DN (2 from the source + 1 from re-encoding)
 ```
 
@@ -548,7 +613,8 @@ against the *decoded source `.owlg`*; the bound against the original GeoTIFF is 
 separately as `bound_vs_original` (2 + 1 = 3 above), together with `rebased_from`
 recording the source codec and delta. `owlg verify` and `owlg info` use
 `bound_vs_original` when it is present, so verifying a rebased file against the original
-GeoTIFF reports the combined bound and exits 0. And `--delta 0` honours `--base`: the
+GeoTIFF reports the combined bound and exits 0 (`owlg info` shows it as `vs original :
++/-3 DN  (rebased from avif +/-2)`). And `--delta 0` honours `--base`: the
 default is a WebP base with a zero-bounded correction layer, which is bit-exact and
 portable; `--base jxl` gives the smallest lossless result when the reader has JXL.
 
@@ -590,7 +656,7 @@ real decode probes:
   webp : YES
   jxl  : YES
 
-file rgb_avif.owlg uses base 'avif' -> CAN be opened here
+file rgb_avif.owlg uses base avif -> CAN be opened here
 ```
 
 `check` exits `0` if at least one codec decodes and `2` if none do — run it first in a

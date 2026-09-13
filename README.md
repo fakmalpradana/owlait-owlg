@@ -125,7 +125,7 @@ Build the plugin zip and install it through **Plugins ▸ Manage and Install Plu
 Install from ZIP**, then **restart QGIS**:
 
 ```bash
-python scripts/build_all.py            # writes dist/owlg_qgis-4.0.0.zip
+python scripts/build_all.py            # writes dist/owlg_qgis-0.1.0.zip
 ```
 
 ---
@@ -324,7 +324,7 @@ decoded. No GeoTIFF copy is created, so the disk footprint stays the size of the
 plus a few kB.
 
 ```
-Plugins ▸ Manage and Install Plugins ▸ Install from ZIP ▸ dist/owlg_qgis-4.0.0.zip
+Plugins ▸ Manage and Install Plugins ▸ Install from ZIP ▸ dist/owlg_qgis-0.1.0.zip
 Restart QGIS.  Then drag a .owlg onto the canvas.
 ```
 

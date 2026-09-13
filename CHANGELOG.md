@@ -3,7 +3,57 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [4.0.0] - 2026-09-13
+Version numbers restart at 0.1.0 with the first public release: the 2.x–4.x
+entries below are the pre-release development history, kept because the
+format versions in file headers (`v: 3` flat, `v: 4` tiled) still refer to
+them. Every file written by those versions opens unchanged in 0.1.0.
+
+## [0.1.0] - 2026-09-13
+
+First public release. The efficiency work that led here is written up in
+[results/codec_experiments_2026-09.md](results/codec_experiments_2026-09.md).
+
+### Added
+- **`owlg encode --target RATIO`** (e.g. `--target 20x`): searches the
+  smallest delta that makes the file that many times smaller than the raw
+  pixels, then encodes with it. The ratio is the goal, the delta it lands on
+  is the promise — written to the header and proven by `owlg verify` like any
+  other. A drone orthophoto reaches 20x at +/-14 DN (22.5x achieved).
+- Quality ladders extended downwards (AVIF q45/q30, WebP q50/q40): at
+  delta >= 8 the best base is a lower quality one, and these rungs are where
+  20x lives. One `QUALITY_LADDERS` table now serves both layouts.
+- `--overview-q` (default 50): pyramid levels carry no bound, so they are
+  encoded at a lower quality. ~35% off the pyramid, ~7% off a tiled file.
+- Colour, when stdout is a terminal: progress bars for the quality search
+  and tile rows, a green/red verdict in `verify`, `info` as a key/value
+  sheet with a pyramid table, YES/NO in `check`, endpoints in `serve`.
+  Off when piped, under `NO_COLOR`, or with `--no-color`;
+  `OWLG_COLOR=always` forces it. `info --json` prints the raw header.
+- `benchmarks/bench_codec_lab.py`: in-memory harness that isolates one
+  encoder variable at a time and reports the smallest delta reaching 20x.
+- JPEG 2000 (OpenJPEG) and JPEG XL reference rows in `bench_options.py`,
+  every one with its measured max error.
+- `docs/getting-started.md`: guided first hour with the CLI, the Python API
+  and the npm package.
+
+### Changed
+- WebP base blobs use libwebp `method=6`: ~4% smaller, ~2x slower to
+  encode, identical to read.
+- Quality selection in the tiled layout now includes the correction cost at
+  delta 0 too. It used to skip it there, although with a lossy base that is
+  where the correction layer is the *dominant* cost, so tiled lossless files
+  picked the lowest quality on the ladder and came out larger than flat ones.
+- Non-uint8 input and an unknown base codec raise `OwlgError` in both layouts.
+- Plugin metadata points at the GitHub repository.
+
+### Not changed, deliberately
+- The correction bitstream. Two-rate adaptation, intensity and neighbour
+  contexts, and block-skip flags were prototyped and measured at -1.5% to
+  +2%; closed-loop and pre-denoised bases made files larger. The coder
+  already pays within a few bits of the theoretical cost of locating the
+  scattered outliers it corrects. Details in the results write-up.
+
+## [4.0.0] - 2026-09-13 (pre-release)
 
 The release that makes 10-100 GB rasters practical, and stops a failure from
 hiding itself.
