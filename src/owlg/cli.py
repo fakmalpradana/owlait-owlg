@@ -54,6 +54,9 @@ def main(argv=None):
                    help='do not build the internal pyramid (tiled layout only)')
     e.add_argument('--min-overview', type=int, default=256,
                    help='stop halving the pyramid below this size')
+    e.add_argument('--overview-q', type=int, default=None,
+                   help='base quality for the display-only overview levels '
+                        '(default 50, never above the level-0 quality)')
     e.add_argument('--encrypt', action='store_true', help='encrypt with AES-256-GCM')
     e.add_argument('--iters', type=int, default=600_000, help='PBKDF2 iterations')
     e.add_argument('--recovery', action='store_true',
@@ -126,7 +129,7 @@ def main(argv=None):
             write_tiled(a.src, a.dst, delta=a.delta,
                         base=(a.base or 'webp'), q=(int(a.q) if a.q else None),
                         tile=(a.tile or 512), overviews=a.overviews,
-                        min_overview=a.min_overview,
+                        min_overview=a.min_overview, overview_q=a.overview_q,
                         password=pw if a.encrypt else None, kdf_iters=a.iters)
         else:
             from .container import write_owlg

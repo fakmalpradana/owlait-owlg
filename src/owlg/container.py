@@ -18,8 +18,8 @@ from . import crypto as cy
 MAGIC = b'OWLG'; VERSION = 3
 REC_MAGIC = b'OWLR'
 LEGACY_MAGIC = b'GTZ1'
-AVIF_Q = [95, 90, 85, 75, 60, 45]
-WEBP_Q = [95, 90, 85, 75, 60]
+AVIF_Q = _io.QUALITY_LADDERS['avif']
+WEBP_Q = _io.QUALITY_LADDERS['webp']
 # The default base is WebP: decodable by practically every GDAL, Pillow, Qt, and
 # browser build out there. On the test data it costs only +4.8% over AVIF.
 DEFAULT_BASE = 'webp'

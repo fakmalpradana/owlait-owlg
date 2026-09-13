@@ -14,6 +14,18 @@ WEBP_PROBE = 'UklGRj4AAABXRUJQVlA4IDIAAADQAQCdASoIAAgAAMASJaACdLoB+AADsAD+2ib/7v
 JXL_PROBE  = '/wpBQCQIBAEAhABLEsWCBVIg/WIMzotBF4MuBufdAUCfFwCIfAGDQ2yAFgE='
 
 
+# Base-layer quality ladders searched by the encoder. Measured on drone
+# orthophotos (benchmarks/bench_codec_lab.py, results/lab_*.md): at small
+# deltas the best total is always the highest quality, at delta >= 8 the
+# optimum moves down the ladder, and AVIF q45/q30 are where 20x vs raw lives.
+QUALITY_LADDERS = {
+    'webp': [95, 90, 85, 75, 60, 50, 40],
+    'avif': [95, 90, 85, 75, 60, 45, 30],
+}
+# Overview levels carry no error guarantee (display only), so they are encoded
+# at this quality regardless of what level 0 uses. ~40% smaller pyramid.
+OVERVIEW_Q = 50
+
 _HAVE_IC = False
 try:
     import imagecodecs as _ic; _HAVE_IC = True
@@ -215,5 +227,7 @@ def jpeg_encode(a, level=85):
     bio = io.BytesIO(); _PIL.fromarray(np.ascontiguousarray(a)).save(bio, format='JPEG', quality=level); return bio.getvalue()
 
 def webp_encode(a, level=80):
-    if _HAVE_IC: return _ic.webp_encode(np.ascontiguousarray(a), level=level, lossless=False)
-    bio = io.BytesIO(); _PIL.fromarray(np.ascontiguousarray(a)).save(bio, format='WEBP', quality=level); return bio.getvalue()
+    # method=6 is libwebp's slowest/best mode: ~4% smaller than the default 4
+    # for ~2x the encode time, and it changes nothing for the reader.
+    if _HAVE_IC: return _ic.webp_encode(np.ascontiguousarray(a), level=level, lossless=False, method=6)
+    bio = io.BytesIO(); _PIL.fromarray(np.ascontiguousarray(a)).save(bio, format='WEBP', quality=level, method=6); return bio.getvalue()

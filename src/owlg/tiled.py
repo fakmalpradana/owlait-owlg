@@ -23,8 +23,8 @@ from . import crypto as cy
 
 MAGIC = b'OWLG'; VERSION = 4
 DEFAULT_TILE = 512
-AVIF_Q = [95, 90, 85, 75, 60]
-WEBP_Q = [95, 90, 85, 75, 60]
+AVIF_Q = _io.QUALITY_LADDERS['avif']
+WEBP_Q = _io.QUALITY_LADDERS['webp']
 
 
 def _enc_base(a, codec, q):
@@ -130,7 +130,8 @@ def _cap_gdal_cache(mb=256):
 
 def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                 overviews=True, min_overview=256, password=None,
-                kdf_iters=cy.DEFAULT_ITERS, verbose=True, gdal_cache_mb=256):
+                kdf_iters=cy.DEFAULT_ITERS, verbose=True, gdal_cache_mb=256,
+                overview_q=None):
     _cap_gdal_cache(gdal_cache_mb)
     import rasterio
     t0 = time.time()
@@ -225,6 +226,9 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     # ---------- overview: read the previous level back, downsample 2x ----------
     if overviews:
         w.close()
+        # Overviews are display-only (no bound), so a lower quality is free.
+        # A lossless JXL base keeps its own quality: there is no knob to turn.
+        oq = q if codec == 'jxl_lossless' else min(int(q), overview_q or _io.OVERVIEW_Q)
         lv = 0
         while max(levels[lv]['w'], levels[lv]['h']) > min_overview:
             prev = levels[lv]
@@ -245,7 +249,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                     a = _box2(src_arr, th, tw)
                     hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
                     idxs = []
-                    for blob in enc_groups(hwc, codec, q, groups):
+                    for blob in enc_groups(hwc, codec, oq, groups):
                         if key is not None:
                             blob = cy.seal(key, prefix, len(w.dir) + len(newdir) + 1, blob)
                         f.write(blob)
