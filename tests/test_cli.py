@@ -270,3 +270,21 @@ def test_recovery_is_refused_for_the_tiled_layout(sample_tif, workspace):
         cli.main(["encode", str(sample_tif), str(workspace / "x.owlg"),
                   "--layout", "tiled", "--recovery"])
     assert "--recovery" in str(exc.value.code)
+
+
+# ---------------------------------------------------------------------- diff
+@needs_encoder
+def test_diff_measures_a_decoded_file_against_the_original(sample_tif, encode, workspace, capsys):
+    """`diff` is `verify` for any pair of rasters. Decode a delta-3 file and
+    compare it to the original: the worst pixel must be exactly the bound the
+    encoder promised, and --bound turns that into an exit code."""
+    skip_unless_supported("flat", 3)
+    tif = workspace / "d3.tif"
+    _main(capsys, ["decode", encode("flat", 3), tif])
+    code, out = _main(capsys, ["diff", tif, sample_tif])
+    assert code is None
+    assert "band 1" in out and "band 3" in out and "worst  : 3 DN" in out
+    code, out = _main(capsys, ["diff", tif, sample_tif, "--bound", 3])
+    assert code == 0 and "HOLDS" in out
+    code, out = _main(capsys, ["diff", tif, sample_tif, "--bound", 2])
+    assert code == 2 and "VIOLATED" in out

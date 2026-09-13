@@ -139,6 +139,51 @@ def _verdict(mx, bound, dl):
     return T.kv('error', f"max={T.num(mx)} (bound +/-{bound}) -> {v}{extra}", 6)
 
 
+def _diff(a):
+    """Streaming comparison of two rasters of the same shape: what `verify` does
+    for an .owlg, for any pair GDAL can open. Meant for measuring what other
+    lossy formats actually did to the pixels."""
+    import rasterio, warnings; warnings.filterwarnings('ignore')
+    with rasterio.open(a.a) as A, rasterio.open(a.b) as B:
+        if (A.width, A.height) != (B.width, B.height):
+            sys.exit(f"Error: shapes differ: {A.width}x{A.height} vs {B.width}x{B.height}")
+        nb = min(A.count, B.count)
+        if A.count != B.count:
+            print(T.warn(f"band count differs ({A.count} vs {B.count}); comparing the first {nb}"))
+        raw = B.width * B.height * B.count
+        sa, sb = os.path.getsize(a.a), os.path.getsize(a.b)
+        print(T.kv('a', f"{T.path(os.path.basename(a.a))}  {T.dim(T.mb(sa))}", 6))
+        print(T.kv('b', f"{T.path(os.path.basename(a.b))}  {T.dim(T.mb(sb) + f', raw {raw/1e6:.1f} MB')}", 6))
+        print(T.kv('size', f"a is {T.ratio(raw/sa)} vs raw, {T.ratio(sb/sa)} vs b", 6))
+        mx = [0]*nb; se = [0.0]*nb; changed = [0]*nb; n = [0]*nb
+        hist = [np.zeros(256, np.int64) for _ in range(nb)]
+        wins = list(B.block_windows(1)); prog = T.Progress('comparing', len(wins)) if len(wins) > 8 else None
+        for i, (_, win) in enumerate(wins):
+            x = A.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
+            y = B.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
+            e = np.abs(x - y)
+            for b in range(nb):
+                eb = e[b]
+                if eb.size == 0: continue
+                mx[b] = max(mx[b], int(eb.max())); se[b] += float((eb.astype(np.float64)**2).sum())
+                changed[b] += int((eb > 0).sum()); n[b] += int(eb.size)
+                hist[b] += np.bincount(eb.ravel(), minlength=256)[:256]
+            if prog and (i % max(1, len(wins)//50) == 0 or i == len(wins)-1): prog.update(i+1)
+    rows = []
+    for b in range(nb):
+        h = hist[b]; c = np.cumsum(h); tot = max(1, n[b])
+        p999 = int(np.searchsorted(c, 0.999 * tot)); p9999 = int(np.searchsorted(c, 0.9999 * tot))
+        rows.append([f"band {b+1}", T.num(mx[b]), f"{p999}", f"{p9999}",
+                     f"{np.sqrt(se[b]/tot):.3f}", f"{100*changed[b]/tot:.2f}%"])
+    print(T.table(rows, header=['', 'max err', 'p99.9', 'p99.99', 'RMSE', 'changed'], align='lrrrrr'))
+    M = max(mx)
+    if a.bound is not None:
+        ok = M <= a.bound
+        print(T.kv('bound', f"+/-{a.bound} -> " + (T.ok('HOLDS') if ok else T.bad('*** VIOLATED ***')), 6))
+        sys.exit(0 if ok else 2)
+    print(T.kv('worst', f"{T.num(M)} DN in some pixel of some band " + T.dim('(no bound is promised by this pair; that is the point)'), 6))
+
+
 def _verify(a):
     import rasterio, warnings; warnings.filterwarnings('ignore')
     from .tiled_read import is_v4
@@ -241,6 +286,12 @@ def main(argv=None):
     v = sub.add_parser('verify', help='prove the error bound over every pixel')
     v.add_argument('owlg'); v.add_argument('orig')
 
+    df = sub.add_parser('diff', help='compare any two rasters (e.g. an ECW decoded to '
+                                     'GeoTIFF vs the original): max error, RMSE, per band')
+    df.add_argument('a', help='the lossy/derived raster'); df.add_argument('b', help='the original')
+    df.add_argument('--bound', type=int, default=None,
+                    help='exit 2 if any sample differs by more than this')
+
     r = sub.add_parser('vrt', help='write a .vrt sidecar so GDAL/QGIS read .owlg DIRECTLY')
     r.add_argument('src'); r.add_argument('dst', nargs='?')
     r.add_argument('--fast', action='store_true', help='sidecar reads the base layer only')
@@ -326,6 +377,8 @@ def main(argv=None):
         _info(a)
     elif a.cmd == 'verify':
         _verify(a)
+    elif a.cmd == 'diff':
+        _diff(a)
     elif a.cmd == 'split':
         from .tiering import split
         l, r = split(a.src, a.light, a.recovery, _pw(a))

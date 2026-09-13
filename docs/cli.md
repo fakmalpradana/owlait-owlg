@@ -1,6 +1,6 @@
 # OWLG command-line reference
 
-`owlg` is a single command with thirteen subcommands. It turns a uint8 GeoTIFF into a
+`owlg` is a single command with fourteen subcommands. It turns a uint8 GeoTIFF into a
 `.owlg` file with a **hard per-pixel error bound**, reads that file back, proves the
 bound holds, exposes the file to GDAL/QGIS without making a copy, builds `.owlgt` web
 tile pyramids, and serves them over OGC API - Tiles/Maps and WMS 1.3.0. This page
@@ -18,6 +18,7 @@ documents every subcommand and every flag, with output captured from real runs a
 - [`decode`](#decode)
 - [`info`](#info)
 - [`verify`](#verify)
+- [`diff`](#diff)
 - [`vrt`](#vrt)
 - [`split`](#split)
 - [`join`](#join)
@@ -51,7 +52,7 @@ because the two produce identical output.
 
 ```
 usage: owlg [-h] [--password PASSWORD] [--ask-password]
-            {encode,decode,info,verify,vrt,split,join,rebase,check,revert,serve,npy,tiles}
+            {encode,decode,info,verify,diff,vrt,split,join,rebase,check,revert,serve,npy,tiles}
             ...
 ```
 
@@ -479,6 +480,33 @@ esac
 For a file produced by `rebase`, `verify` compares against `bound_vs_original` — the
 bound relative to the original GeoTIFF — rather than the header's `delta`, which is
 relative to the source `.owlg`. See [`rebase`](#rebase).
+
+## `diff`
+
+`verify` for any two rasters GDAL can open — the tool for measuring what *another*
+lossy format did to the pixels. Give it an ECW or JPEG 2000 decoded to GeoTIFF and the
+original, and it streams block by block (safe for very large rasters), reporting per band
+the worst pixel, the 99.9th and 99.99th percentiles, RMSE and the share of changed
+samples.
+
+| Flag | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `a` | path | required | The derived / lossy raster. |
+| `b` | path | required | The original. |
+| `--bound` | int | none | Exit `0` if every sample is within `±bound`, `2` otherwise. |
+
+```
+$ owlg diff d3.tif rgb_small.tif
+a      : d3.tif  0.749 MB
+b      : rgb_small.tif  1.706 MB, raw 1.7 MB
+size   : a is 2.27x vs raw, 2.28x vs b
+         max err  p99.9  p99.99   RMSE  changed
+------  -------  -----  ------  -----  -------
+band 1        3      3       3  1.475   53.44%
+band 2        3      3       3  1.489   53.83%
+band 3        3      3       3  1.486   53.87%
+worst  : 3 DN in some pixel of some band (no bound is promised by this pair; that is the point)
+```
 
 ## `vrt`
 
