@@ -1,0 +1,629 @@
+{
+ "meta": {
+  "source": "/Users/akmal/Desktop/1_work/owlait/owlg/data/FT2026_crop/FT2026_crop.tif",
+  "width": 12986,
+  "height": 12986,
+  "bands": 4,
+  "dtype": "uint8",
+  "raw_bytes": 674544784,
+  "owlg_version": "0.1.0",
+  "when": "2026-09-14"
+ },
+ "rows": [
+  {
+   "group": "reference",
+   "name": "GeoTIFF DEFLATE+pred (lossless)",
+   "bytes": 375124861,
+   "vs_raw": 1.798187361407646,
+   "vs_gtiff": 1.0,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 52.71256399154663,
+   "dec_s": null,
+   "note": "baseline for the \"vs GeoTIFF\" column"
+  },
+  {
+   "group": "reference",
+   "name": "GeoTIFF LZW (lossless)",
+   "bytes": 426926802,
+   "vs_raw": 1.5800010232199009,
+   "vs_gtiff": 0.8786631788931349,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 5.8692309856414795,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "GeoTIFF ZSTD (lossless)",
+   "bytes": 361035231,
+   "vs_raw": 1.8683627692833114,
+   "vs_gtiff": 1.039025637362244,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 8.61220407485962,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "GeoTIFF JPEG q85 (lossy)",
+   "bytes": 110330442,
+   "vs_raw": 6.113859164998179,
+   "vs_gtiff": 3.400012310292385,
+   "maxerr": 32,
+   "rmse": 2.548131010619562,
+   "enc_s": 2.8939380645751953,
+   "dec_s": null,
+   "note": "RGB only: JPEG cannot carry the 4th band"
+  },
+  {
+   "group": "reference",
+   "name": "GeoTIFF JPEG q75 (lossy)",
+   "bytes": 83672394,
+   "vs_raw": 8.06173639539942,
+   "vs_gtiff": 4.483257177988716,
+   "maxerr": 54,
+   "rmse": 3.3118165261271946,
+   "enc_s": 2.5152969360351562,
+   "dec_s": null,
+   "note": "RGB only"
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG lossless",
+   "bytes": 227882884,
+   "vs_raw": 2.9600502335225842,
+   "vs_gtiff": 1.6461300402008252,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 4.7658140659332275,
+   "dec_s": null,
+   "note": "JPEG 2000: the same wavelet family as ECW"
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG q25 (lossy, ~4x)",
+   "bytes": 143761510,
+   "vs_raw": 4.69210975872471,
+   "vs_gtiff": 2.609355320488773,
+   "maxerr": 6,
+   "rmse": 0.6419431478449852,
+   "enc_s": 4.893625020980835,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG q10 (lossy, ~10x)",
+   "bytes": 67438928,
+   "vs_raw": 10.002305849227023,
+   "vs_gtiff": 5.562438077307516,
+   "maxerr": 22,
+   "rmse": 1.486775975674257,
+   "enc_s": 4.098598003387451,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG q5 (lossy, ~20x)",
+   "bytes": 33712686,
+   "vs_raw": 20.008633663897324,
+   "vs_gtiff": 11.127112832243625,
+   "maxerr": 46,
+   "rmse": 2.666649152452029,
+   "enc_s": 3.7763400077819824,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG q3 (lossy, ~33x)",
+   "bytes": 20224115,
+   "vs_raw": 33.35348834794502,
+   "vs_gtiff": 18.548394379679902,
+   "maxerr": 71,
+   "rmse": 3.8823834853503305,
+   "enc_s": 3.7899281978607178,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JP2 OpenJPEG q2 (lossy, ~50x)",
+   "bytes": 13479644,
+   "vs_raw": 50.04173582032285,
+   "vs_gtiff": 27.828988732936864,
+   "maxerr": 135,
+   "rmse": 5.015368794937996,
+   "enc_s": 3.698521137237549,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JPEG XL lossless",
+   "bytes": 215778084,
+   "vs_raw": 3.1261042432835766,
+   "vs_gtiff": 1.7384752614635322,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 19.04773211479187,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JPEG XL distance 1 (lossy)",
+   "bytes": 38110392,
+   "vs_raw": 17.699759792552122,
+   "vs_gtiff": 9.843112109683888,
+   "maxerr": 115,
+   "rmse": 2.878205488447628,
+   "enc_s": 20.181185007095337,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JPEG XL distance 2 (lossy)",
+   "bytes": 22615874,
+   "vs_raw": 29.826164754897377,
+   "vs_gtiff": 16.58679478847468,
+   "maxerr": 157,
+   "rmse": 3.9009285866736354,
+   "enc_s": 20.299560070037842,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "reference",
+   "name": "JPEG XL distance 4 (lossy)",
+   "bytes": 12547790,
+   "vs_raw": 53.75805492441298,
+   "vs_gtiff": 29.895691671601135,
+   "maxerr": 159,
+   "rmse": 5.453190398720043,
+   "enc_s": 18.813642978668213,
+   "dec_s": null,
+   "note": ""
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG lossless (delta=0), base WEBP",
+   "bytes": 268961021,
+   "vs_raw": 2.5079648400055707,
+   "vs_gtiff": 1.3947183112455541,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 74.59676194190979,
+   "dec_s": 75.98447299003601,
+   "note": "bit-identical revert"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=2, base WEBP",
+   "bytes": 130428082,
+   "vs_raw": 5.171775691679649,
+   "vs_gtiff": 2.8761050170161977,
+   "maxerr": 2,
+   "rmse": 1.1569587143021918,
+   "enc_s": 60.89307713508606,
+   "dec_s": 49.24178385734558,
+   "note": "guaranteed max error <= 2 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=4, base WEBP",
+   "bytes": 86129986,
+   "vs_raw": 7.83170664859971,
+   "vs_gtiff": 4.35533405288142,
+   "maxerr": 4,
+   "rmse": 1.886155014513833,
+   "enc_s": 52.959874868392944,
+   "dec_s": 43.50801396369934,
+   "note": "guaranteed max error <= 4 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=8, base WEBP",
+   "bytes": 52509643,
+   "vs_raw": 12.846112551174649,
+   "vs_gtiff": 7.143923279006105,
+   "maxerr": 8,
+   "rmse": 2.8081157457837347,
+   "enc_s": 47.92577910423279,
+   "dec_s": 40.599738121032715,
+   "note": "guaranteed max error <= 8 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=16, base WEBP",
+   "bytes": 29256463,
+   "vs_raw": 23.056265687345732,
+   "vs_gtiff": 12.821948469984221,
+   "maxerr": 16,
+   "rmse": 5.084123159406786,
+   "enc_s": 37.724928855895996,
+   "dec_s": 41.60625672340393,
+   "note": "guaranteed max error <= 16 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=32, base WEBP",
+   "bytes": 20218378,
+   "vs_raw": 33.362952458401956,
+   "vs_gtiff": 18.5536575189167,
+   "maxerr": 32,
+   "rmse": 5.560551046217397,
+   "enc_s": 37.30251693725586,
+   "dec_s": 39.39885401725769,
+   "note": "guaranteed max error <= 32 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=2, base AVIF",
+   "bytes": 116521570,
+   "vs_raw": 5.78901214599151,
+   "vs_gtiff": 3.2193598232498926,
+   "maxerr": 2,
+   "rmse": 1.155542745900613,
+   "enc_s": 120.86373782157898,
+   "dec_s": 52.61036396026611,
+   "note": "guaranteed max error <= 2 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=4, base AVIF",
+   "bytes": 74686633,
+   "vs_raw": 9.03166680442001,
+   "vs_gtiff": 5.022650585948894,
+   "maxerr": 4,
+   "rmse": 1.804698068920885,
+   "enc_s": 107.8227698802948,
+   "dec_s": 46.69775104522705,
+   "note": "guaranteed max error <= 4 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=8, base AVIF",
+   "bytes": 45061822,
+   "vs_raw": 14.969318905924398,
+   "vs_gtiff": 8.324671403655183,
+   "maxerr": 8,
+   "rmse": 3.0640037433375795,
+   "enc_s": 93.57727479934692,
+   "dec_s": 42.2983021736145,
+   "note": "guaranteed max error <= 8 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=16, base AVIF",
+   "bytes": 23522034,
+   "vs_raw": 28.67714518225762,
+   "vs_gtiff": 15.947807107157486,
+   "maxerr": 16,
+   "rmse": 4.689916391841058,
+   "enc_s": 80.93699288368225,
+   "dec_s": 42.07019925117493,
+   "note": "guaranteed max error <= 16 DN"
+  },
+  {
+   "group": "owlg",
+   "name": "OWLG delta=32, base AVIF",
+   "bytes": 10652858,
+   "vs_raw": 63.320545904207115,
+   "vs_gtiff": 35.21354184952057,
+   "maxerr": 32,
+   "rmse": 6.744013931978224,
+   "enc_s": 68.2608962059021,
+   "dec_s": 39.443132162094116,
+   "note": "guaranteed max error <= 32 DN"
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT view q50",
+   "bytes": 17114253,
+   "vs_raw": 39.414211300954825,
+   "vs_gtiff": 21.91885681484316,
+   "maxerr": 131,
+   "rmse": 5.5115626942500615,
+   "enc_s": 121.75729322433472,
+   "dec_s": null,
+   "note": "display only, no bound",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT view q72",
+   "bytes": 35113847,
+   "vs_raw": 19.210221654152562,
+   "vs_gtiff": 10.683103477667942,
+   "maxerr": 90,
+   "rmse": 3.2847215955391182,
+   "enc_s": 124.50475811958313,
+   "dec_s": null,
+   "note": "default display quality",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT exact delta=2",
+   "bytes": 132444586,
+   "vs_raw": 5.09303403311631,
+   "vs_gtiff": 2.832315554219785,
+   "maxerr": 2,
+   "rmse": 1.3430396158653732,
+   "enc_s": 156.98828387260437,
+   "dec_s": null,
+   "note": "guaranteed max error <= 2 DN on every tile",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT exact delta=4",
+   "bytes": 82981571,
+   "vs_raw": 8.128850488983874,
+   "vs_gtiff": 4.520580370791004,
+   "maxerr": 4,
+   "rmse": 2.208993375494709,
+   "enc_s": 149.35362005233765,
+   "dec_s": null,
+   "note": "guaranteed max error <= 4 DN on every tile",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT exact delta=8",
+   "bytes": 46025120,
+   "vs_raw": 14.656013585624546,
+   "vs_gtiff": 8.150437435035476,
+   "maxerr": 8,
+   "rmse": 3.15321421304415,
+   "enc_s": 149.671728849411,
+   "dec_s": null,
+   "note": "guaranteed max error <= 8 DN on every tile",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT exact delta=16",
+   "bytes": 26551389,
+   "vs_raw": 25.405254090473385,
+   "vs_gtiff": 14.128257508486655,
+   "maxerr": 16,
+   "rmse": 7.616624769401673,
+   "enc_s": 152.33213806152344,
+   "dec_s": null,
+   "note": "guaranteed max error <= 16 DN on every tile",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "OWLGT exact delta=32",
+   "bytes": 11800675,
+   "vs_raw": 57.16154236939836,
+   "vs_gtiff": 31.788424052013973,
+   "maxerr": 32,
+   "rmse": 14.708039637689467,
+   "enc_s": 150.245276927948,
+   "dec_s": null,
+   "note": "guaranteed max error <= 32 DN on every tile",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "gdal2tiles PNG tree (3011 tiles)",
+   "bytes": 374039320,
+   "vs_raw": 1.8034060804088725,
+   "vs_gtiff": 1.0029022109226378,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 23.39859676361084,
+   "dec_s": null,
+   "note": "one file per tile on disk",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "gdal2tiles JPEG q75 tree (3011 tiles)",
+   "bytes": 36496105,
+   "vs_raw": 18.48265134046496,
+   "vs_gtiff": 10.278490293690245,
+   "maxerr": 111,
+   "rmse": 4.3787355802440775,
+   "enc_s": 8.452743768692017,
+   "dec_s": null,
+   "note": "one file per tile on disk",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "gdal2tiles WEBP q75 tree (3011 tiles)",
+   "bytes": 26357804,
+   "vs_raw": 25.59184308374097,
+   "vs_gtiff": 14.232022553927482,
+   "maxerr": 84,
+   "rmse": 4.717791808591787,
+   "enc_s": 12.250221252441406,
+   "dec_s": null,
+   "note": "one file per tile on disk",
+   "ntiles": 3011
+  },
+  {
+   "group": "owlgt",
+   "name": "MBTiles PNG",
+   "bytes": 336064512,
+   "vs_raw": 2.0071883817354688,
+   "vs_gtiff": 1.1162287227757033,
+   "maxerr": 0,
+   "rmse": 0.0,
+   "enc_s": 60.17129969596863,
+   "dec_s": null,
+   "note": "single SQLite file of tiles"
+  },
+  {
+   "group": "owlgt",
+   "name": "MBTiles JPEG q75",
+   "bytes": 39563264,
+   "vs_raw": 17.049775872890567,
+   "vs_gtiff": 9.481645927899175,
+   "maxerr": 112,
+   "rmse": 4.250854269012946,
+   "enc_s": 24.635927200317383,
+   "dec_s": null,
+   "note": "single SQLite file of tiles"
+  },
+  {
+   "group": "owlgt",
+   "name": "MBTiles WEBP q75",
+   "bytes": 29679616,
+   "vs_raw": 22.72754418386006,
+   "vs_gtiff": 12.639141321774513,
+   "maxerr": 89,
+   "rmse": 4.655869848723378,
+   "enc_s": 37.91236686706543,
+   "dec_s": null,
+   "note": "single SQLite file of tiles"
+  }
+ ],
+ "latency": {
+  "OWLGT exact delta16": {
+   "cold": {
+    "p50": 18.196333010564558,
+    "p95": 22.65187498414889
+   },
+   "warm": {
+    "p50": 2.5367295020259917,
+    "p95": 3.0250829877331853
+   },
+   "dec": {
+    "p50": 16.063625007518567,
+    "p95": 19.769458012888208
+   },
+   "open_s": null
+  },
+  "OWLGT exact delta2": {
+   "cold": {
+    "p50": 5.84862548566889,
+    "p95": 10.931249998975545
+   },
+   "warm": {
+    "p50": 2.2394164989236742,
+    "p95": 2.6045420090667903
+   },
+   "dec": {
+    "p50": 3.5392500140005723,
+    "p95": 8.561165974242613
+   },
+   "open_s": null
+  },
+  "OWLGT exact delta32": {
+   "cold": {
+    "p50": 17.892541509354487,
+    "p95": 19.436000002315268
+   },
+   "warm": {
+    "p50": 2.2429164964705706,
+    "p95": 2.675083000212908
+   },
+   "dec": {
+    "p50": 15.620416481397115,
+    "p95": 17.07695799996145
+   },
+   "open_s": null
+  },
+  "OWLGT exact delta4": {
+   "cold": {
+    "p50": 5.1066880114376545,
+    "p95": 5.9758749848697335
+   },
+   "warm": {
+    "p50": 2.31462498777546,
+    "p95": 2.633249998325482
+   },
+   "dec": {
+    "p50": 2.7413954958319664,
+    "p95": 3.320249990792945
+   },
+   "open_s": null
+  },
+  "OWLGT exact delta8": {
+   "cold": {
+    "p50": 4.725457998574711,
+    "p95": 7.836083008442074
+   },
+   "warm": {
+    "p50": 2.180853989557363,
+    "p95": 2.509625017410144
+   },
+   "dec": {
+    "p50": 2.4981254973681644,
+    "p95": 5.4471250041387975
+   },
+   "open_s": null
+  },
+  "OWLGT view q50": {
+   "cold": {
+    "p50": 2.6963335112668574,
+    "p95": 3.1669999880250543
+   },
+   "warm": {
+    "p50": 2.074958509183489,
+    "p95": 2.385250001680106
+   },
+   "dec": {
+    "p50": 0.582791501074098,
+    "p95": 0.691708002705127
+   },
+   "open_s": null
+  },
+  "OWLGT view q72": {
+   "cold": {
+    "p50": 2.7931250078836456,
+    "p95": 3.255333984270692
+   },
+   "warm": {
+    "p50": 2.080916994600557,
+    "p95": 2.3419999924954027
+   },
+   "dec": {
+    "p50": 0.686791492626071,
+    "p95": 0.8563339943066239
+   },
+   "open_s": null
+  },
+  "gdal2tiles PNG tree": {
+   "cold": {
+    "p50": 0.22033302229829133,
+    "p95": 0.2737079921644181
+   },
+   "warm": null
+  },
+  "MBTiles PNG": {
+   "cold": {
+    "p50": 0.4805420176126063,
+    "p95": 0.768083002185449
+   },
+   "warm": null
+  },
+  "HTTP: owlg serve (exact delta=4)": {
+   "cold": {
+    "p50": 5.311500004609115,
+    "p95": 6.066542002372444
+   },
+   "warm": null,
+   "open_s": 0.6876158714294434
+  },
+  "HTTP: python -m http.server (PNG tree)": {
+   "cold": {
+    "p50": 0.22724999871570617,
+    "p95": 0.4987080174032599
+   },
+   "warm": null,
+   "open_s": 0.5129909515380859
+  }
+ }
+}

@@ -183,10 +183,13 @@ or under `NO_COLOR` it prints exactly the same words, plain.
 
 ## Efficiency, option by option
 
-Every number below was produced by `benchmarks/bench_options.py` on the machine that
-wrote this README, and can be regenerated on yours. Three rasters are shown because
-compression ratios depend enormously on the imagery: satellite scenes and drone
-orthophotos do not behave alike, and quoting only the flattering one would be dishonest.
+Every number below was produced by `benchmarks/bench_options.py` (A–C) and
+`benchmarks/bench_large.py` (D) on the machine that wrote this README, and can be
+regenerated on yours. Four rasters are shown because compression ratios depend enormously
+on the imagery: satellite scenes and drone orthophotos do not behave alike, and quoting
+only the flattering one would be dishonest. D is the one that matters for production: a
+169 MPixel orthophoto that goes through the tiled layout, with every lossy format's error
+measured pixel by pixel.
 
 Two columns matter. **vs raw** is against the uncompressed pixels (`width x height x
 bands`), the number a 20x goal is measured in. **vs GeoTIFF** is against a
@@ -310,6 +313,77 @@ comparison for every raster, are in [`results/`](results/). What was tried to pu
 numbers further, and why the correction coder was left alone, is in
 [`results/codec_experiments_2026-09.md`](results/codec_experiments_2026-09.md).
 
+### D. A 169 MPixel orthophoto — 12986 × 12986 × 4, 674.5 MB raw (`FT2026_crop.tif`)
+
+A production-size aerial orthophoto at 6.6 cm/pixel (UTM 49S), 899 MB as delivered
+(uncompressed, with overviews). The fourth band is a constant 255 and costs nothing. This
+is the raster the 20x target was set for; it is also too large for the flat layout, so
+every OWLG row is `--layout tiled` with the base-only overview pyramid included in the
+size. The **max err** column is measured over all 169 M pixels of every band by decoding
+each file back and diffing it against the original (`owlg diff`); for OWLG that is the
+proof of the bound, not a claim. Not redistributable.
+
+**Lossless, and the lossy formats a GIS user would actually make**
+
+| Option | Size | vs raw | vs GeoTIFF | max err | RMSE | enc | dec |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| GeoTIFF DEFLATE + predictor (lossless) | 375.1 MB | 1.8x | 1.0x | **0** | 0.00 | 53 s | — |
+| GeoTIFF ZSTD (lossless) | 361.0 MB | 1.9x | 1.0x | **0** | 0.00 | 9 s | — |
+| JPEG 2000 lossless | 227.9 MB | 3.0x | 1.6x | **0** | 0.00 | 5 s | — |
+| JPEG XL lossless | 215.8 MB | 3.1x | 1.7x | **0** | 0.00 | 19 s | — |
+| **OWLG `--delta 0`** (bit-identical) | 269.0 MB | 2.5x | 1.4x | **0** | 0.00 | 75 s | 76 s |
+| GeoTIFF JPEG q85 (RGB only) | 110.3 MB | 6.1x | 3.4x | 32 | 2.55 | 3 s | — |
+| GeoTIFF JPEG q75 (RGB only) | 83.7 MB | 8.1x | 4.5x | 54 | 3.31 | 3 s | — |
+| JPEG 2000 q25 | 143.8 MB | 4.7x | 2.6x | 6 | 0.64 | 5 s | — |
+| JPEG 2000 q10 | 67.4 MB | 10.0x | 5.6x | 22 | 1.49 | 4 s | — |
+| JPEG 2000 q5 | 33.7 MB | 20.0x | 11.1x | 46 | 2.67 | 4 s | — |
+| JPEG 2000 q3 | 20.2 MB | 33.4x | 18.5x | 71 | 3.88 | 4 s | — |
+| JPEG 2000 q2 | 13.5 MB | 50.0x | 27.8x | 135 | 5.02 | 4 s | — |
+| JPEG XL distance 1 | 38.1 MB | 17.7x | 9.8x | 115 | 2.88 | 20 s | — |
+| JPEG XL distance 2 | 22.6 MB | 29.8x | 16.6x | 157 | 3.90 | 20 s | — |
+| JPEG XL distance 4 | 12.5 MB | 53.8x | 29.9x | 159 | 5.45 | 19 s | — |
+
+**OWLG, hard per-pixel bound, delta 2 → 32**
+
+| Option | Size | vs raw | vs GeoTIFF | max err | RMSE | enc | dec |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| OWLG `--delta 2` | 130.4 MB | 5.2x | 2.9x | 2 | 1.16 | 61 s | 49 s |
+| OWLG `--delta 4` | 86.1 MB | 7.8x | 4.4x | 4 | 1.89 | 53 s | 44 s |
+| OWLG `--delta 8` | 52.5 MB | 12.8x | 7.1x | 8 | 2.81 | 48 s | 41 s |
+| OWLG `--delta 16` | 29.3 MB | 23.1x | 12.8x | 16 | 5.08 | 38 s | 42 s |
+| OWLG `--delta 32` | 20.2 MB | 33.4x | 18.6x | 32 | 5.56 | 37 s | 39 s |
+| OWLG `--delta 2` `--base avif` | 116.5 MB | 5.8x | 3.2x | 2 | 1.16 | 121 s | 53 s |
+| OWLG `--delta 4` `--base avif` | 74.7 MB | 9.0x | 5.0x | 4 | 1.80 | 108 s | 47 s |
+| OWLG `--delta 8` `--base avif` | 45.1 MB | 15.0x | 8.3x | 8 | 3.06 | 94 s | 42 s |
+| OWLG `--delta 16` `--base avif` | 23.5 MB | 28.7x | 15.9x | 16 | 4.69 | 81 s | 42 s |
+| OWLG `--delta 32` `--base avif` | 10.7 MB | 63.3x | 35.2x | 32 | 6.74 | 68 s | 39 s |
+
+Reading the two tables together:
+
+- **At the same size, the bound is 2–5x tighter than what wavelets or JPEG XL actually
+  do.** JPEG 2000 q3 and OWLG `--delta 32` are the same 20.2 MB; the worst JPEG 2000
+  pixel is off by 71, the worst OWLG pixel by 32 — and that 32 is written in the header
+  and proven, not observed. JPEG 2000 q2 (13.5 MB) has a worst pixel of 135; JPEG XL
+  distance 4 (12.5 MB) has 159. OWLG `--delta 32 --base avif` is smaller than both at
+  10.7 MB, 63x vs raw, worst pixel 32.
+- **20x vs raw is reached at `--delta 16`** with the default WebP base (29.3 MB, 23x), and
+  `--delta 16 --base avif` gives 28.7x. On this imagery the goal set for 0.1.0 is met
+  with a bound of 6 % of the 8-bit range.
+- **Below delta 8 the bound is nearly free.** OWLG `--delta 4` (86 MB, worst pixel 4) is
+  the size of GeoTIFF JPEG q75 (84 MB for three bands only, worst pixel 54) and 40 %
+  smaller than JPEG 2000 q25 (144 MB, worst pixel 6).
+- **RMSE is not what OWLG optimises**, and it shows: JPEG 2000 q3 has a lower RMSE
+  (3.88) than OWLG `--delta 32` (5.56) at the same size. OWLG spends its bytes on the
+  worst pixel; the wavelet spends them on the average one. Pick by what your analysis
+  can tolerate — a classifier or a change detector fails on the outlier, not the mean.
+- **Lossless**: JPEG XL (216 MB) and JPEG 2000 (228 MB) beat OWLG `--delta 0` with a
+  WebP base (269 MB). For a bit-identical archive of a raster this size use one of
+  them, or `--base jxl`; OWLG's case is the bounded-lossy range.
+- **Speed**: 169 MPixel encodes in 37–75 s (WebP) or 68–121 s (AVIF) single-threaded,
+  and decodes in 40–76 s; GDAL's JPEG 2000 is ten times faster in both directions. An
+  ECW of this scene exists (15.4 MB), but no free decoder was available on the test
+  machine, so it is not in the table; the wavelet rows above are the closest stand-in.
+
 ### Which option should I use?
 
 | If you want | Use |
@@ -317,7 +391,7 @@ numbers further, and why the correction coder was left alone, is in
 | An archival master, byte-for-byte | `--delta 0` (add `--base jxl` for the smallest, if your readers have JXL) |
 | A working copy for analysis | `--delta 1` or `--delta 2` |
 | A distribution copy for viewing | `--delta 3` to `--delta 8` |
-| The smallest file that still carries a written bound | `--target 20x --base avif` (lands on delta 12–16 for aerial imagery) |
+| The smallest file that still carries a written bound | `--target 20x --base avif` (lands on delta 12–16 for aerial imagery; `--target 44x` landed on delta 24 for the 169 MPixel ortho) |
 | Both at once | `--delta 2 --recovery`, then `owlg split` |
 | A raster over ~16 MPixel | nothing — `--layout auto` already picks `tiled` |
 | Maximum portability | `--base webp` (the default) |
@@ -486,6 +560,68 @@ WMS 1.3.0         http://127.0.0.1:8080/wms?SERVICE=WMS&REQUEST=GetCapabilities&
 The WMS implementation observes the 1.3.0 axis-order rule: `EPSG:4326` is lat,lon while
 `CRS:84` is lon,lat. Getting that backwards is the classic way to produce a blank map.
 
+### OWLGT against the usual tile answers
+
+The 169 MPixel orthophoto of table D, warped to EPSG:3857 and tiled z14–z21 (2,890
+non-empty tiles, 3,011 including fully transparent edge tiles that gdal2tiles writes and
+OWLGT skips). The **max err** of OWLGT is against the tile pyramid it was built from, over
+every tile of every zoom; the JPEG and WEBP trees are measured against their own PNG
+twin on opaque pixels only, so the number is the codec's error and nothing else.
+
+| Option | Size | vs raw | vs GeoTIFF | max err | RMSE | enc | dec |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| OWLGT `--profile exact --delta 2` | 132.4 MB | 5.1x | 2.8x | 2 | 1.34 | 157 s | — |
+| OWLGT `--profile exact --delta 4` | 83.0 MB | 8.1x | 4.5x | 4 | 2.21 | 149 s | — |
+| OWLGT `--profile exact --delta 8` | 46.0 MB | 14.7x | 8.2x | 8 | 3.15 | 150 s | — |
+| OWLGT `--profile exact --delta 16` | 26.6 MB | 25.4x | 14.1x | 16 | 7.62 | 152 s | — |
+| OWLGT `--profile exact --delta 32` | 11.8 MB | 57.2x | 31.8x | 32 | 14.71 | 150 s | — |
+| OWLGT `--profile view --q 72` | 35.1 MB | 19.2x | 10.7x | 90 | 3.28 | 125 s | — |
+| OWLGT `--profile view --q 50` | 17.1 MB | 39.4x | 21.9x | 131 | 5.51 | 122 s | — |
+| gdal2tiles PNG (3011 files) | 374.0 MB | 1.8x | 1.0x | **0** | 0.00 | 23 s | — |
+| gdal2tiles JPEG q75 (3011 files) | 36.5 MB | 18.5x | 10.3x | 111 | 4.38 | 8 s | — |
+| gdal2tiles WEBP q75 (3011 files) | 26.4 MB | 25.6x | 14.2x | 84 | 4.72 | 12 s | — |
+| MBTiles PNG | 336.1 MB | 2.0x | 1.1x | **0** | 0.00 | 60 s | — |
+| MBTiles JPEG q75 | 39.6 MB | 17.0x | 9.5x | 112 | 4.25 | 25 s | — |
+| MBTiles WEBP q75 | 29.7 MB | 22.7x | 12.6x | 89 | 4.66 | 38 s | — |
+
+- OWLGT `--profile exact --delta 32` is the smallest thing in the table, 11.8 MB for the
+  whole pyramid, and still bounded. Every unbounded alternative — JPEG or WEBP tiles at
+  q75, OWLGT `view` — has a worst pixel of 84–131.
+- At `--delta 2`–`8` the exact profile costs about the same as the flat OWLG of the same
+  bound; you get web tiles for free.
+- The exact profile's RMSE climbs at delta 16–32 (7.6, 14.7) although the bound holds.
+  Above delta 8 most tiles are coded as a residual against their upsampled parent tile
+  rather than as a standalone AVIF, which is cheaper but leaves more pixels near the edge
+  of the bound. If average error matters more than size at large delta, use OWLG.
+
+**Tile latency** — one finest-zoom tile, p50 / p95 over 200 random tiles, single thread.
+For OWLGT: decode plus PNG encode of the response ("decode only" is the codec alone;
+"warm" is a second request for the same tile, served from the decoded-tile cache). For
+the PNG tree a file read, for MBTiles a SQLite fetch — that is all a static tile server
+does. HTTP rows are end to end on localhost.
+
+| Source | p50 | p95 | decode only | warm (cached) |
+|---|---:|---:|---:|---:|
+| OWLGT view q72 | 2.8 ms | 3.3 ms | 0.7 ms | 2.1 ms |
+| OWLGT exact delta2 | 5.8 ms | 10.9 ms | 3.5 ms | 2.2 ms |
+| OWLGT exact delta4 | 5.1 ms | 6.0 ms | 2.7 ms | 2.3 ms |
+| OWLGT exact delta8 | 4.7 ms | 7.8 ms | 2.5 ms | 2.2 ms |
+| OWLGT exact delta16 | 18.2 ms | 22.7 ms | 16.1 ms | 2.5 ms |
+| OWLGT exact delta32 | 17.9 ms | 19.4 ms | 15.6 ms | 2.2 ms |
+| gdal2tiles PNG tree | 0.22 ms | 0.27 ms | — | — |
+| MBTiles PNG | 0.48 ms | 0.77 ms | — | — |
+| HTTP: owlg serve (exact delta=4) | 5.31 ms | 6.07 ms | — | — |
+| HTTP: python -m http.server (PNG tree) | 0.23 ms | 0.50 ms | — | — |
+
+- A static PNG tree is 20x faster to serve than OWLGT: it does no work. OWLGT trades
+  that for 4–30x less storage. At 3–6 ms per tile one core serves ~200 tiles/s cold;
+  `owlg serve` is a stdlib demo server, not a production one — put a cache in front.
+- Residual tiles (most tiles at delta 16–32) decode their parent chain first, hence
+  16 ms cold; the parents are cached, so neighbouring tiles come in at 2 ms.
+- Half of the served time is PNG encoding of the response. `owlg serve` uses zlib level
+  1 for that (2.5x faster than level 6 for 4 % more bytes); asking for `.webp` or `.jpg`
+  instead of `.png` is cheaper still.
+
 ---
 
 ## Machine learning pipeline
@@ -577,6 +713,10 @@ scripts/build_all.py   builds the plugin zip, the wheel and the npm tarball
 pip install -e .[dev]
 python benchmarks/bench_options.py samples/rgb_small.tif -o results/rgb_small
 python benchmarks/bench_options.py your_own_raster.tif -o results/yours --deep
+
+# rasters too large for the flat layout: streaming, resumable, with the OWLGT and latency sections
+gdalwarp -t_srs EPSG:3857 big.tif big_3857.tif
+python benchmarks/bench_large.py big.tif --src3857 big_3857.tif -o results/big --resume
 ```
 
 It writes `<out>.json` and `<out>.md`. Reference formats are produced with GDAL, so the

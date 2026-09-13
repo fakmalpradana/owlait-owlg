@@ -8,6 +8,20 @@ entries below are the pre-release development history, kept because the
 format versions in file headers (`v: 3` flat, `v: 4` tiled) still refer to
 them. Every file written by those versions opens unchanged in 0.1.0.
 
+## [Unreleased]
+
+- `owlg diff a b [--bound N]`: streaming per-band error statistics of any two rasters;
+  `owlg.cli.diff_stats()` is the shared measurement behind it and the benchmarks.
+- `benchmarks/bench_large.py`: streaming, resumable benchmark for rasters beyond the
+  flat layout — GDAL reference formats with measured error, OWLG delta 2–32 proven by a
+  full decode, OWLGT against gdal2tiles trees and MBTiles, and tile latency.
+- README table D: a 169 MPixel orthophoto, delta 2–32 against JPEG, JPEG 2000 and JPEG
+  XL with the error each one actually made; OWLGT size and latency tables.
+- `owlg serve` encodes PNG responses at zlib level 1: 2.5x faster per tile for 4 % more
+  bytes.
+- VRT bridge honours GDAL's buffer size in `read_band` (fixes a QGIS hang on open); QGIS
+  plugin no longer blocks on a stale `EXPECTED_VERSION`.
+
 ## [0.1.0] - 2026-09-13
 
 First public release. The efficiency work that led here is written up in

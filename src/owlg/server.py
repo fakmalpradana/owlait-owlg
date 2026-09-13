@@ -26,7 +26,7 @@ CONFORMANCE = [
 def _enc_png(rgb, alpha=None):
     from . import imgio as _io
     a = np.dstack([rgb, alpha]) if alpha is not None else rgb
-    return _io.png_encode(np.ascontiguousarray(a), level=6), 'image/png'
+    return _io.png_encode(np.ascontiguousarray(a), level=1), 'image/png'  # level 1: 2.5x faster than 6 for +4% bytes, measured on 256 px tiles
 
 def _enc_jpeg(rgb, q=85):
     from . import imgio as _io

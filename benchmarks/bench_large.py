@@ -160,9 +160,11 @@ class Bench:
         import rasterio
         with rasterio.open(src3857) as ds:
             res = ds.transform.a
+        # gdal2tiles' convention: the finest zoom whose tile resolution is still
+        # coarser than or equal to the native pixel (never oversample)
         zmax = 0
-        while 156543.03392804097 / (2 ** zmax) > res and zmax < 22: zmax += 1
-        zmin = max(0, zmax - 7)
+        while 156543.03392804097 / (2 ** zmax) >= res and zmax < 23: zmax += 1
+        zmax -= 1; zmin = max(0, zmax - 7)
         print(f"\nOWLGT web tiles z{zmin}-{zmax} (native {res:.3f} m/px)")
 
         # ponytail: build the pyramid once and hand it to every write_owlgt;
@@ -399,7 +401,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('src'); ap.add_argument('--src3857', help='EPSG:3857 copy for the OWLGT section')
     ap.add_argument('-o', '--out', default=None); ap.add_argument('--work', default=None)
-    ap.add_argument('--resume', action='store_true'); ap.add_argument('--only', choices=['reference', 'owlg', 'owlgt'])
+    ap.add_argument('--resume', action='store_true'); ap.add_argument('--only', choices=['reference', 'owlg', 'owlgt', 'latency'])
     a = ap.parse_args()
     out = a.out or os.path.join(ROOT, 'results', os.path.splitext(os.path.basename(a.src))[0])
     work = a.work or out + '.work'
@@ -411,6 +413,11 @@ def main():
     if a.only in (None, 'reference'): b.reference()
     if a.only in (None, 'owlg'): b.owlg()
     if a.only in (None, 'owlgt') and a.src3857: b.owlgt(a.src3857)
+    if a.only == 'latency' and a.src3857:       # re-measure latency on existing files
+        from owlg import tiles
+        hdr = tiles.open_owlgt(next(b.p(f) for f in os.listdir(work) if f.endswith('.owlgt')))[0]
+        zmin, zmax = hdr['minzoom'], hdr['maxzoom']
+        b.latency(zmin, zmax, tiles.build_pyramid(a.src3857, zmax, zmax))
     open(out + '.md', 'w').write(to_markdown(json.load(open(out + '.json'))))
     print(f"\n-> {out}.json\n-> {out}.md")
 
