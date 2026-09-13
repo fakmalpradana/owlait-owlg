@@ -36,7 +36,9 @@ def read_all(path):
 
 
 def gdal_translate(src, dst, opts):
-    cmd = ['gdal_translate', '-q', '-of', 'GTiff'] + opts + [src, dst]
+    # a leading '-of X' in opts overrides the GTiff default
+    fmt = [] if '-of' in opts else ['-of', 'GTiff']
+    cmd = ['gdal_translate', '-q'] + fmt + opts + [src, dst]
     r = subprocess.run(cmd, capture_output=True, text=True)
     return r.returncode == 0
 
@@ -111,6 +113,22 @@ class Bench:
             ('GeoTIFF WEBP q85 (lossy)',
              ['-co', 'COMPRESS=WEBP', '-co', 'WEBP_LEVEL=85', '-co', 'TILED=YES'],
              'webp85.tif'),
+            # JPEG 2000 is the same wavelet family as ECW and the closest freely
+            # writable stand-in for it. QUALITY is a percentage of the raw size.
+            ('JP2 OpenJPEG lossless',
+             ['-of', 'JP2OpenJPEG', '-co', 'REVERSIBLE=YES', '-co', 'QUALITY=100'],
+             'jp2ll.jp2'),
+        ] + [
+            (f'JP2 OpenJPEG q{q} (lossy, ~{100/q:.0f}x)',
+             ['-of', 'JP2OpenJPEG', '-co', f'QUALITY={q}'], f'jp2q{q}.jp2')
+            for q in (25, 10, 5, 3)
+        ] + [
+            ('JPEG XL lossless',
+             ['-of', 'JPEGXL', '-co', 'LOSSLESS=YES'], 'jxlll.jxl'),
+        ] + [
+            (f'JPEG XL distance {d} (lossy)',
+             ['-of', 'JPEGXL', '-co', 'LOSSLESS=NO', '-co', f'DISTANCE={d}'], f'jxld{d}.jxl')
+            for d in (1, 2, 4)
         ]
         for name, opts, fn in specs:
             p = self.p('ref_' + fn)
