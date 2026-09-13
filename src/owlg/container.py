@@ -53,29 +53,57 @@ def _dec_base(buf, codec):
     return np.ascontiguousarray(np.asarray(d)[..., :3].astype(np.uint8))
 
 # ------------------------------- WRITE -------------------------------
+def _build(C, coded, groups, cod, qq, delta, tile, wbuf=None):
+    """Base blobs + correction blobs for the coded bands C at (codec, q, delta).
+    Returns (base_blobs, corr_blobs, total_bytes). Exact, not an estimate."""
+    nb, H, W = C.shape
+    if wbuf is None:
+        wbuf = np.zeros(nb*tile*tile*3 + 65536, np.uint8)
+    bl, decs = [], []
+    for g in groups:
+        idx = [coded.index(x) for x in g]
+        a = np.ascontiguousarray(C[idx].transpose(1, 2, 0))
+        if a.shape[2] < 3: a = _pad_rgb(a)
+        blob = _enc_base(a, cod, qq); bl.append(blob)
+        decs.append(_dec_base(blob, cod)[:, :, :len(g)])
+    BASE = np.ascontiguousarray(np.concatenate([d.transpose(2,0,1) for d in decs], 0)[:nb])
+    tb = []
+    for y0 in range(0, H, tile):
+        for x0 in range(0, W, tile):
+            n = enc_tile(C, BASE, y0, min(y0+tile, H), x0, min(x0+tile, W), delta, wbuf)
+            tb.append(wbuf[:n].tobytes())
+    return bl, tb, sum(map(len, bl)) + sum(map(len, tb))
+
+
 def _rio():
     import rasterio; return rasterio
+
+def load_source(src):
+    """Read a uint8 GeoTIFF whole: (A (B,H,W), meta, const, coded, groups)."""
+    rasterio = _rio()
+    with rasterio.open(src) as ds:
+        A = ds.read()
+        if ds.dtypes[0] != 'uint8':
+            raise OwlgError(f'OWLG handles uint8; this file is {ds.dtypes[0]}')
+        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
+                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
+                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+    const, coded = {}, []
+    for b in range(A.shape[0]):
+        u = np.unique(A[b])
+        (const.__setitem__(str(b), int(u[0])) if u.size == 1 else coded.append(b))
+    groups = [coded[i:i+3] for i in range(0, len(coded), 3)]
+    return A, meta, const, coded, groups
+
 
 def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
                password=None, kdf_iters=cy.DEFAULT_ITERS, recovery=False, verbose=True,
                extra_header=None):
     t0 = time.time()
-    rasterio = _rio()
-    with rasterio.open(src) as ds:
-        A = ds.read()
-        if ds.dtypes[0] != 'uint8':
-            raise OwlgError(f'OWLG v2 handles uint8; this file is {ds.dtypes[0]}')
-        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
-                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
-                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+    A, meta, const, coded, groups = load_source(src)
     B, H, W = A.shape; RAW = A.nbytes
-    const, coded = {}, []
-    for b in range(B):
-        u = np.unique(A[b])
-        (const.__setitem__(str(b), int(u[0])) if u.size == 1 else coded.append(b))
     C = np.ascontiguousarray(A[coded]); nb = len(coded)
     sha = hashlib.sha256(np.ascontiguousarray(A).tobytes()).hexdigest()
-    groups = [coded[i:i+3] for i in range(0, nb, 3)]
     if verbose:
         print(f"  {W}x{H}x{B} uint8  RAW={RAW/1e6:.2f} MB")
         if const: print(f"  constant bands dropped: {const} (-{len(const)*H*W/1e6:.2f} MB)")
@@ -101,21 +129,7 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
         nty, ntx = (H+tile-1)//tile, (W+tile-1)//tile
         wbuf = np.zeros(nb*tile*tile*3 + 65536, np.uint8)
         def build(cod, qq):
-            bl, decs = [], []
-            for g in groups:
-                idx = [coded.index(x) for x in g]
-                a = np.ascontiguousarray(C[idx].transpose(1, 2, 0))
-                if a.shape[2] < 3: a = _pad_rgb(a)
-                blob = _enc_base(a, cod, qq); bl.append(blob)
-                decs.append(_dec_base(blob, cod)[:, :, :len(g)])
-            BASE = np.ascontiguousarray(np.concatenate([d.transpose(2,0,1) for d in decs], 0)[:nb])
-            tb = []
-            for ty in range(nty):
-                for tx in range(ntx):
-                    y0,y1 = ty*tile, min((ty+1)*tile,H); x0,x1 = tx*tile, min((tx+1)*tile,W)
-                    n = enc_tile(C, BASE, y0, y1, x0, x1, delta, wbuf)
-                    tb.append(wbuf[:n].tobytes())
-            return bl, tb, sum(map(len, bl)) + sum(map(len, tb))
+            return _build(C, coded, groups, cod, qq, delta, tile, wbuf)
         if codec not in (None, 'auto'):
             if q is None:
                 raise OwlgError("--codec also needs --q (it names an exact codec and "

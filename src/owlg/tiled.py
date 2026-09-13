@@ -20,6 +20,7 @@ warnings.filterwarnings('ignore')
 from . import imgio as _io
 from .codec import enc_tile, dec_tile
 from . import crypto as cy
+from .errors import OwlgError
 
 MAGIC = b'OWLG'; VERSION = 4
 DEFAULT_TILE = 512
@@ -83,37 +84,79 @@ class _Writer:
     def close(self): self.f.close()
 
 
-def _pick_quality(src, coded, tile, codec, delta, qlist, nsample=6, groups=None):
-    """Sample a handful of scattered tiles to pick the best base quality."""
-    import rasterio
-    with rasterio.open(src) as ds:
-        H, W = ds.height, ds.width
-        nty, ntx = (H + tile - 1)//tile, (W + tile - 1)//tile
-        picks = []
-        step = max(1, (nty * ntx) // max(nsample, 1))
-        for k in range(0, nty * ntx, step):
-            picks.append((k // ntx, k % ntx))
-            if len(picks) >= nsample: break
-        if groups is None: groups = band_groups(coded)
-        buf = np.zeros(len(coded)*tile*tile*3 + 65536, np.uint8)
-        best = None
-        for q in qlist:
-            tot = 0
-            for (ty, tx) in picks:
+class _Sampler:
+    """A handful of scattered tiles, read once, on which base quality and
+    delta can be chosen cheaply. estimate() scales the sampled bytes up to the
+    whole level 0; the pyramid (~15%) is added on top by callers that need it."""
+    def __init__(self, src, coded, tile, groups=None, nsample=6):
+        import rasterio
+        self.groups = groups if groups is not None else band_groups(coded)
+        self.tiles = []
+        with rasterio.open(src) as ds:
+            H, W = ds.height, ds.width
+            nty, ntx = (H + tile - 1)//tile, (W + tile - 1)//tile
+            step = max(1, (nty * ntx) // max(nsample, 1))
+            for k in range(0, nty * ntx, step):
+                ty, tx = k // ntx, k % ntx
                 y0, x0 = ty*tile, tx*tile
                 th, tw = min(tile, H-y0), min(tile, W-x0)
-                if th <= 0 or tw <= 0: continue
-                a = ds.read(indexes=[b+1 for b in coded],
-                            window=((y0, y0+th), (x0, x0+tw)))
-                hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
-                blobs = enc_groups(hwc, codec, q, groups)
-                tot += sum(len(bl) for bl in blobs)
-                if delta > 0:
-                    Bs = dec_groups(blobs, codec, groups)
-                    C = np.ascontiguousarray(a)
-                    tot += enc_tile(C, Bs, 0, th, 0, tw, delta, buf)
-            if best is None or tot < best[1]: best = (q, tot)
-        return best[0]
+                if th > 0 and tw > 0:
+                    self.tiles.append(np.ascontiguousarray(
+                        ds.read(indexes=[b+1 for b in coded],
+                                window=((y0, y0+th), (x0, x0+tw)))))
+                if len(self.tiles) >= nsample: break
+        self.total_px = H * W
+        self.sampled_px = sum(t.shape[1] * t.shape[2] for t in self.tiles)
+        self.buf = np.zeros(len(coded)*tile*tile*3 + 65536, np.uint8)
+
+    def sampled_bytes(self, codec, q, delta):
+        tot = 0
+        for a in self.tiles:
+            hwc = np.ascontiguousarray(a.transpose(1, 2, 0))
+            blobs = enc_groups(hwc, codec, q, self.groups)
+            tot += sum(len(bl) for bl in blobs)
+            # The correction layer exists at delta 0 too (lossy base, bound 0),
+            # and there it is the dominant cost: never skip it.
+            Bs = dec_groups(blobs, codec, self.groups)
+            tot += enc_tile(a, Bs, 0, a.shape[1], 0, a.shape[2], delta, self.buf)
+        return tot
+
+    def estimate(self, codec, q, delta):
+        """Estimated level-0 bytes for the whole raster."""
+        return self.sampled_bytes(codec, q, delta) * self.total_px / max(self.sampled_px, 1)
+
+    def best_q(self, codec, qlist, delta):
+        return min(qlist, key=lambda q: self.sampled_bytes(codec, q, delta))
+
+
+def _pick_quality(src, coded, tile, codec, delta, qlist, nsample=6, groups=None):
+    """Sample a handful of scattered tiles to pick the best base quality."""
+    return _Sampler(src, coded, tile, groups, nsample).best_q(codec, qlist, delta)
+
+
+def scan_source(src):
+    """Dimensions, geo metadata and constant-band detection without loading the
+    raster: (W, H, B, meta, const, coded)."""
+    import rasterio
+    with rasterio.open(src) as ds:
+        if ds.dtypes[0] != 'uint8':
+            raise OwlgError(f'OWLG handles uint8; this file is {ds.dtypes[0]}')
+        W, H, B = ds.width, ds.height, ds.count
+        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
+                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
+                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
+        const, coded = {}, []
+        for b in range(B):
+            mn, mx = None, None
+            for _, win in ds.block_windows(b + 1):
+                a = ds.read(b + 1, window=win)
+                m0, m1 = int(a.min()), int(a.max())
+                mn = m0 if mn is None else min(mn, m0)
+                mx = m1 if mx is None else max(mx, m1)
+                if mn != mx: break
+            if mn == mx: const[str(b)] = int(mn)
+            else: coded.append(b)
+    return W, H, B, meta, const, coded
 
 
 def _cap_gdal_cache(mb=256):
@@ -135,25 +178,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     _cap_gdal_cache(gdal_cache_mb)
     import rasterio
     t0 = time.time()
-    with rasterio.open(src) as ds:
-        if ds.dtypes[0] != 'uint8':
-            raise ValueError(f'OWLG v4 handles uint8; this file is {ds.dtypes[0]}')
-        W, H, B = ds.width, ds.height, ds.count
-        meta = dict(crs=ds.crs.to_wkt() if ds.crs else None,
-                    transform=list(ds.transform)[:6], nodata=list(ds.nodatavals),
-                    colorinterp=[c.name for c in ds.colorinterp], tags=ds.tags())
-        # constant bands: detect them from per-band statistics, without loading it all
-        const, coded = {}, []
-        for b in range(B):
-            mn, mx = None, None
-            for _, win in ds.block_windows(b + 1):
-                a = ds.read(b + 1, window=win)
-                m0, m1 = int(a.min()), int(a.max())
-                mn = m0 if mn is None else min(mn, m0)
-                mx = m1 if mx is None else max(mx, m1)
-                if mn != mx: break
-            if mn == mx: const[str(b)] = int(mn)
-            else: coded.append(b)
+    W, H, B, meta, const, coded = scan_source(src)
     nb = len(coded)
     groups = band_groups(coded)
     if base == 'auto':
@@ -171,7 +196,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
         if verbose:
             print(f"  --base auto resolved to {base}")
     if base not in ('webp', 'avif', 'jxl'):
-        raise ValueError(f"unknown base codec: {base!r} (use webp, avif, jxl or auto)")
+        raise OwlgError(f"unknown base codec: {base!r} (use webp, avif, jxl or auto)")
     codec = 'jxl_lossless' if (delta == 0 and base == 'jxl') else base
     if delta == 0 and base in ('webp', 'avif'):
         codec = base            # lossy base + delta=0 correction -> still bit-exact
