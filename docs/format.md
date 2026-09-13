@@ -142,7 +142,9 @@ The raster is a grid of independent tiles, plus an overview pyramid, all inside 
 
 - `levels[0]` is full resolution and is the only level carrying the error guarantee.
 - Every further level is the previous one box-filtered 2x, stored **base only**: it
-  exists for display when zoomed out, and carries no correction layer.
+  exists for display when zoomed out, and carries no correction layer. Because there is
+  no bound to keep there, overview blobs are encoded at a lower quality than level 0
+  (`--overview-q`, default 50); a reader treats them like any other base blob.
 - Within a level, tile `(ty, tx)` is at index `ty * ntx + tx`.
 - `base[i]` is a **list** of blob indices, one per band group. Readers should accept a
   bare integer as well, meaning a single group, for files written before grouping
@@ -205,7 +207,10 @@ This guarantees `|original - reconstruction| <= delta` by construction, for any 
 layer at all — including an extremely lossy one. The base quality is chosen by encoding
 a few sample tiles at several qualities and keeping whichever gives the smallest
 `base + correction` total; a worse base makes a bigger correction layer, so there is a
-real optimum rather than a monotone trade.
+real optimum rather than a monotone trade. At small deltas that optimum is the highest
+quality on the ladder; past delta 8 it moves down (AVIF q60/q45, WebP q75/q50), which is
+where 20x vs raw is reached on aerial imagery. `--target RATIO` searches the delta
+ladder for the smallest bound whose optimum meets a size goal.
 
 `q` is entropy-coded with a **binary adaptive range coder** (LZMA-style, 15-bit
 probabilities, shift 5) using CABAC-style binarization: a zero flag, then a sign, then

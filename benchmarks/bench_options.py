@@ -30,9 +30,21 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))
 
 # --------------------------------------------------------------------------- io
 def read_all(path):
+    """Read any raster GDAL can open. rasterio's bundled GDAL lacks some drivers
+    (JPEG XL, for one), so fall back to the system gdal_translate -> GeoTIFF."""
     import rasterio
-    with rasterio.open(path) as ds:
-        return ds.read(), ds.profile
+    try:
+        with rasterio.open(path) as ds:
+            return ds.read(), ds.profile
+    except Exception:
+        tmp = path + '.readback.tif'
+        if not gdal_translate(path, tmp, []):
+            raise
+        try:
+            with rasterio.open(tmp) as ds:
+                return ds.read(), ds.profile
+        finally:
+            os.remove(tmp)
 
 
 def gdal_translate(src, dst, opts):
@@ -193,7 +205,7 @@ def build_rows(b, deep=False):
            note='constant RAM, internal overviews')
 
     print("\nOWLG — near-lossless, hard per-pixel bound")
-    for d in ([0, 1, 2, 3, 5, 8, 12] if deep else [1, 2, 3, 5, 8]):
+    for d in ([0, 1, 2, 3, 5, 8, 12, 16] if deep else [1, 2, 3, 5, 8]):
         if d == 0:
             continue
         b.owlg(f'OWLG near-lossless delta={d}', 'nearlossless',
@@ -204,6 +216,15 @@ def build_rows(b, deep=False):
     b.owlg('OWLG delta=2, base AVIF', 'basecodec',
            ['--delta', '2', '--base', 'avif', '--layout', 'flat'], 'd2_avif.owlg',
            note='smallest, needs an AVIF decoder')
+
+    print("\nOWLG — a size goal: the smallest bound that reaches 20x vs raw")
+    for base in ('webp', 'avif'):
+        row = b.owlg(f'OWLG --target 20x, base {base.upper()}', 'target',
+                     ['--target', '20x', '--base', base, '--layout', 'flat'],
+                     f't20_{base}.owlg', note='delta chosen by the encoder')
+        if row and row.get('maxerr') is not None:
+            row['note'] = f"encoder chose delta={row['maxerr']}; bound proven by the decode"
+
 
     print("\nOWLG — layout")
     b.owlg('OWLG delta=2, tiled+pyramid', 'layout',
@@ -338,11 +359,12 @@ def to_markdown(meta, rows):
         'lossless': 'OWLG lossless — revert is bit-identical',
         'nearlossless': 'OWLG near-lossless — hard per-pixel bound',
         'basecodec': 'Base codec, same bound',
+        'target': 'A size goal: `--target 20x`',
         'layout': 'Layout',
         'extras': 'Recovery tier and encryption',
         'owlgt': 'OWLGT web tiles',
     }
-    for g in ['reference', 'lossless', 'nearlossless', 'basecodec', 'layout',
+    for g in ['reference', 'lossless', 'nearlossless', 'basecodec', 'target', 'layout',
               'extras', 'owlgt']:
         sel = [r for r in rows if r['group'] == g]
         if not sel:
