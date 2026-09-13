@@ -358,6 +358,33 @@ proof of the bound, not a claim. Not redistributable.
 | OWLG `--delta 16` `--base avif` | 23.5 MB | 28.7x | 15.9x | 16 | 4.69 | 81 s | 42 s |
 | OWLG `--delta 32` `--base avif` | 10.7 MB | 63.3x | 35.2x | 32 | 6.74 | 68 s | 39 s |
 
+**What the pixels look like**
+
+The same 320 × 320 window (pixel 6000, 8000 — a planted terrace with kerbs and gravel,
+the most detailed patch a variance scan found) from the original and from each file,
+the centre 80 × 80 pixels at 4x, and an error map: `|decoded − original|`, the worst of
+the three bands, on one fixed scale (black 0, white ≥ 64 DN) so the maps compare across
+rows. Produced by `benchmarks/visual_crops.py`; nothing is retouched.
+
+| | Crop (native) | Centre, 4x | \|error\| (0–64 DN) | Size | max err in this crop |
+|---|---|---|---|---:|---:|
+| **Original** | ![](docs/img/ft2026/original.png) | ![](docs/img/ft2026/original_zoom.png) | ![](docs/img/ft2026/original_err.png) | 674.5 MB raw | 0 |
+| **GeoTIFF JPEG q75** | ![](docs/img/ft2026/jpeg75.png) | ![](docs/img/ft2026/jpeg75_zoom.png) | ![](docs/img/ft2026/jpeg75_err.png) | 83.7 MB | 35 |
+| **JPEG 2000 q3** | ![](docs/img/ft2026/jp2q3.png) | ![](docs/img/ft2026/jp2q3_zoom.png) | ![](docs/img/ft2026/jp2q3_err.png) | 20.2 MB | 37 |
+| **JPEG 2000 q2** | ![](docs/img/ft2026/jp2q2.png) | ![](docs/img/ft2026/jp2q2_zoom.png) | ![](docs/img/ft2026/jp2q2_err.png) | 13.5 MB | 46 |
+| **JPEG XL distance 4** | ![](docs/img/ft2026/jxld4.png) | ![](docs/img/ft2026/jxld4_zoom.png) | ![](docs/img/ft2026/jxld4_err.png) | 12.5 MB | 72 |
+| **OWLG delta 8** | ![](docs/img/ft2026/owlg_webp_d8.png) | ![](docs/img/ft2026/owlg_webp_d8_zoom.png) | ![](docs/img/ft2026/owlg_webp_d8_err.png) | 52.5 MB | 8 |
+| **OWLG delta 16** | ![](docs/img/ft2026/owlg_webp_d16.png) | ![](docs/img/ft2026/owlg_webp_d16_zoom.png) | ![](docs/img/ft2026/owlg_webp_d16_err.png) | 29.3 MB | 16 |
+| **OWLG delta 32** | ![](docs/img/ft2026/owlg_webp_d32.png) | ![](docs/img/ft2026/owlg_webp_d32_zoom.png) | ![](docs/img/ft2026/owlg_webp_d32_err.png) | 20.2 MB | 32 |
+| **OWLG delta 32, AVIF** | ![](docs/img/ft2026/owlg_avif_d32.png) | ![](docs/img/ft2026/owlg_avif_d32_zoom.png) | ![](docs/img/ft2026/owlg_avif_d32_err.png) | 10.7 MB | 32 |
+
+At native scale every row looks fine — that is the problem with judging codecs by eye.
+The error maps show where the bytes went: JPEG 2000 and JPEG XL leave a haze of noise
+over every textured surface and their worst pixels sit on the kerb edges; OWLG's maps
+are dark up to the bound and nothing is brighter than it, because nothing can be. JPEG XL
+distance 4 is the smallest file (12.5 MB) and the brightest map; OWLG `--delta 32 --base
+avif` is smaller (10.7 MB) and its map is capped at 32.
+
 Reading the two tables together:
 
 - **At the same size, the bound is 2–5x tighter than what wavelets or JPEG XL actually
