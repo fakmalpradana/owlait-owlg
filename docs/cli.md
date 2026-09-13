@@ -498,15 +498,21 @@ samples.
 ```
 $ owlg diff d3.tif rgb_small.tif
 a      : d3.tif  0.749 MB
-b      : rgb_small.tif  1.706 MB, raw 1.7 MB
-size   : a is 2.27x vs raw, 2.28x vs b
-         max err  p99.9  p99.99   RMSE  changed
-------  -------  -----  ------  -----  -------
-band 1        3      3       3  1.475   53.44%
-band 2        3      3       3  1.489   53.83%
-band 3        3      3       3  1.486   53.87%
+b      : rgb_small.tif  1.746 MB, raw 1.7 MB
+size   : a is 2.27x vs raw, 2.33x vs b
+    comparing 1/240
+    ...
+    comparing 240/240
+        max err  p99.9  p99.99   RMSE  changed
+──────  ───────  ─────  ──────  ─────  ───────
+band 1        3      3       3  1.477   53.72%
+band 2        3      3       3  1.454   53.50%
+band 3        3      3       3  1.518   53.91%
 worst  : 3 DN in some pixel of some band (no bound is promised by this pair; that is the point)
 ```
+
+With `--bound 3` the last line becomes `bound  : +/-3 -> HOLDS` and the exit code is 0;
+`--bound 2` prints `*** VIOLATED ***` and exits 2.
 
 ## `vrt`
 
