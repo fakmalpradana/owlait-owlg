@@ -15,7 +15,7 @@ import os, sys, hashlib, tempfile, traceback
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = "OWLG"
-EXPECTED_VERSION = "4.0.0"
+EXPECTED_VERSION = "0.1.0"  # kept in sync with src/owlg/__version__ by scripts/build_all.py
 EXTS = ('.owlg', '.owlgt')
 
 from qgis.PyQt.QtWidgets import (QAction, QFileDialog, QInputDialog, QLineEdit,

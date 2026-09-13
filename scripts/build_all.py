@@ -39,6 +39,23 @@ def sync_vendor():
         shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
     shutil.rmtree(os.path.join(dst, '__pycache__'), ignore_errors=True)
     print(f"  vendor synced: {len(VENDOR)} modules")
+    _sync_expected_version()
+
+
+def _sync_expected_version():
+    """owlg_plugin.py refuses a stale cached decoder by comparing __version__
+    against a literal EXPECTED_VERSION baked into its own source (it can't compare
+    against the import it just did - that would always agree with itself). Keep
+    that literal equal to VERSION here so a version bump can't silently break
+    every load the way EXPECTED_VERSION = "4.0.0" did after the 0.1.0 reset."""
+    p = os.path.join(ROOT, 'qgis-plugin/owlg_qgis/owlg_plugin.py')
+    src = open(p).read()
+    new, n = re.subn(r'EXPECTED_VERSION = "[^"]+"', f'EXPECTED_VERSION = "{VERSION}"', src, count=1)
+    if n != 1:
+        sys.exit("EXPECTED_VERSION line not found in owlg_plugin.py")
+    if new != src:
+        open(p, 'w').write(new)
+        print(f"  EXPECTED_VERSION -> {VERSION}")
 
 
 def stage():

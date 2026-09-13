@@ -32,6 +32,9 @@ package-lock.json
 # Keep the tracked samples
 !samples/*.tif
 
+# Keep the delivered plugin package
+!packages/owlg_qgis/*.zip
+
 # OS
 .DS_Store
 Thumbs.db
