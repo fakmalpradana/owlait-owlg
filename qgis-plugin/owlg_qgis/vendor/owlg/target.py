@@ -11,6 +11,11 @@ import re
 import numpy as np
 from .errors import OwlgError
 
+# Container overhead (magic, header JSON, blob directory) that the payload
+# estimates below do not see. Small, but it is the difference between 7.99x
+# and 8.0x when the goal is exactly met.
+HEADER_BYTES = 4096
+
 # Candidate bounds, in DN. Coarse at the top because the size curve flattens:
 # beyond ~16 DN the base layer, not the correction, is what is left.
 DELTAS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 20, 24, 32]
@@ -64,7 +69,7 @@ def estimate_flat(C, coded, groups, base, ladder, tile):
             _, _, sz = _build(C, coded, groups, base, q, delta, tile, wbuf)
             if best is None or sz < best[0]:
                 best = (sz, q)
-        return best
+        return best[0] + HEADER_BYTES, best[1]
     return est
 
 
@@ -74,5 +79,5 @@ def estimate_tiled(sampler, base, ladder, overviews):
 
     def est(delta):
         q = sampler.best_q(base, ladder, delta)
-        return sampler.estimate(base, q, delta) * pyr, q
+        return sampler.estimate(base, q, delta) * pyr + HEADER_BYTES, q
     return est

@@ -295,9 +295,10 @@ def serve(paths, host='127.0.0.1', port=8080, block=True):
     url = f"http://{host}:{port}"
     from . import _term as T
     print(f"OWLG serving {T.num(len(srcs))} collection{'s' if len(srcs) != 1 else ''} at {T.path(url)}")
-    for s in srcs:
+    for s in srcs.values():
         h = s.hdr
-        print(f"  {T.key(s.cid):<16} {T.dim(f"z{h['minzoom']}-{h['maxzoom']}, {h['ntiles']} tiles, profile {h['profile']}")}")
+        desc = f"z{h['minzoom']}-{h['maxzoom']}, {h['ntiles']} tiles, profile {h['profile']}"
+        print(f"  {T.key(f'{s.cid:<16}')} {T.dim(desc)}")
     print(T.kv('OGC API landing', T.path(url + '/'), 16))
     print(T.kv('Collections', T.path(url + '/collections'), 16))
     print(T.kv('OGC tiles', T.path(f"{url}/collections/<id>/map/tiles/{TMS_ID}/{{z}}/{{y}}/{{x}}.png"), 16))
