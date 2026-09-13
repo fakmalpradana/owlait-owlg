@@ -2,6 +2,7 @@
 """owlg — command line interface for Optimized Owl GeoTIFF."""
 import argparse, os, sys, json, getpass, numpy as np
 from . import _term as T
+from .errors import OwlgError
 
 def _pw(a, need=False):
     if getattr(a, 'password', None): return a.password
@@ -139,6 +140,39 @@ def _verdict(mx, bound, dl):
     return T.kv('error', f"max={T.num(mx)} (bound +/-{bound}) -> {v}{extra}", 6)
 
 
+def diff_stats(pa, pb, progress=None):
+    """Streaming per-band error statistics of raster `pa` against `pb`
+    (same shape, any GDAL format). Returns a list of dicts, one per band:
+    max, p999, p9999, rmse, changed (fraction). Used by `owlg diff` and the
+    benchmarks, so the numbers in both come from one place."""
+    import rasterio, warnings; warnings.filterwarnings('ignore')
+    with rasterio.open(pa) as A, rasterio.open(pb) as B:
+        if (A.width, A.height) != (B.width, B.height):
+            raise OwlgError(f"shapes differ: {A.width}x{A.height} vs {B.width}x{B.height}")
+        nb = min(A.count, B.count)
+        mx = [0]*nb; se = [0.0]*nb; changed = [0]*nb; n = [0]*nb
+        hist = [np.zeros(256, np.int64) for _ in range(nb)]
+        wins = list(B.block_windows(1))
+        for i, (_, win) in enumerate(wins):
+            x = A.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
+            y = B.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
+            e = np.abs(x - y)
+            for b in range(nb):
+                eb = e[b]
+                if eb.size == 0: continue
+                mx[b] = max(mx[b], int(eb.max())); se[b] += float((eb.astype(np.float64)**2).sum())
+                changed[b] += int((eb > 0).sum()); n[b] += int(eb.size)
+                hist[b] += np.bincount(np.minimum(eb.ravel(), 255), minlength=256)[:256]
+            if progress: progress(i+1, len(wins))
+    out = []
+    for b in range(nb):
+        c = np.cumsum(hist[b]); tot = max(1, n[b])
+        out.append(dict(max=mx[b], p999=int(np.searchsorted(c, 0.999*tot)),
+                        p9999=int(np.searchsorted(c, 0.9999*tot)),
+                        rmse=float(np.sqrt(se[b]/tot)), changed=changed[b]/tot))
+    return out
+
+
 def _diff(a):
     """Streaming comparison of two rasters of the same shape: what `verify` does
     for an .owlg, for any pair GDAL can open. Meant for measuring what other
@@ -151,32 +185,17 @@ def _diff(a):
         if A.count != B.count:
             print(T.warn(f"band count differs ({A.count} vs {B.count}); comparing the first {nb}"))
         raw = B.width * B.height * B.count
-        sa, sb = os.path.getsize(a.a), os.path.getsize(a.b)
-        print(T.kv('a', f"{T.path(os.path.basename(a.a))}  {T.dim(T.mb(sa))}", 6))
-        print(T.kv('b', f"{T.path(os.path.basename(a.b))}  {T.dim(T.mb(sb) + f', raw {raw/1e6:.1f} MB')}", 6))
-        print(T.kv('size', f"a is {T.ratio(raw/sa)} vs raw, {T.ratio(sb/sa)} vs b", 6))
-        mx = [0]*nb; se = [0.0]*nb; changed = [0]*nb; n = [0]*nb
-        hist = [np.zeros(256, np.int64) for _ in range(nb)]
-        wins = list(B.block_windows(1)); prog = T.Progress('comparing', len(wins)) if len(wins) > 8 else None
-        for i, (_, win) in enumerate(wins):
-            x = A.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
-            y = B.read(indexes=list(range(1, nb+1)), window=win).astype(np.int32)
-            e = np.abs(x - y)
-            for b in range(nb):
-                eb = e[b]
-                if eb.size == 0: continue
-                mx[b] = max(mx[b], int(eb.max())); se[b] += float((eb.astype(np.float64)**2).sum())
-                changed[b] += int((eb > 0).sum()); n[b] += int(eb.size)
-                hist[b] += np.bincount(eb.ravel(), minlength=256)[:256]
-            if prog and (i % max(1, len(wins)//50) == 0 or i == len(wins)-1): prog.update(i+1)
-    rows = []
-    for b in range(nb):
-        h = hist[b]; c = np.cumsum(h); tot = max(1, n[b])
-        p999 = int(np.searchsorted(c, 0.999 * tot)); p9999 = int(np.searchsorted(c, 0.9999 * tot))
-        rows.append([f"band {b+1}", T.num(mx[b]), f"{p999}", f"{p9999}",
-                     f"{np.sqrt(se[b]/tot):.3f}", f"{100*changed[b]/tot:.2f}%"])
+        nwin = len(list(B.block_windows(1)))
+    sa, sb = os.path.getsize(a.a), os.path.getsize(a.b)
+    print(T.kv('a', f"{T.path(os.path.basename(a.a))}  {T.dim(T.mb(sa))}", 6))
+    print(T.kv('b', f"{T.path(os.path.basename(a.b))}  {T.dim(T.mb(sb) + f', raw {raw/1e6:.1f} MB')}", 6))
+    print(T.kv('size', f"a is {T.ratio(raw/sa)} vs raw, {T.ratio(sb/sa)} vs b", 6))
+    prog = T.Progress('comparing', nwin) if nwin > 8 else None
+    st = diff_stats(a.a, a.b, progress=(lambda i, n: prog.update(i) if (i % max(1, n//50) == 0 or i == n) else None) if prog else None)
+    rows = [[f"band {b+1}", T.num(s['max']), f"{s['p999']}", f"{s['p9999']}",
+             f"{s['rmse']:.3f}", f"{100*s['changed']:.2f}%"] for b, s in enumerate(st)]
     print(T.table(rows, header=['', 'max err', 'p99.9', 'p99.99', 'RMSE', 'changed'], align='lrrrrr'))
-    M = max(mx)
+    M = max(s['max'] for s in st)
     if a.bound is not None:
         ok = M <= a.bound
         print(T.kv('bound', f"+/-{a.bound} -> " + (T.ok('HOLDS') if ok else T.bad('*** VIOLATED ***')), 6))
