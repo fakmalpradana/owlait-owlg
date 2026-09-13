@@ -293,12 +293,17 @@ def serve(paths, host='127.0.0.1', port=8080, block=True):
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.sources = srcs
     url = f"http://{host}:{port}"
-    print(f"OWLG serving {len(srcs)} collections at {url}")
-    print(f"  OGC API landing : {url}/")
-    print(f"  Collections     : {url}/collections")
-    print(f"  OGC tiles       : {url}/collections/<id>/map/tiles/{TMS_ID}/{{z}}/{{y}}/{{x}}.png")
-    print(f"  XYZ (Leaflet)   : {url}/xyz/<id>/{{z}}/{{x}}/{{y}}.png")
-    print(f"  WMS 1.3.0       : {url}/wms?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0")
+    from . import _term as T
+    print(f"OWLG serving {T.num(len(srcs))} collection{'s' if len(srcs) != 1 else ''} at {T.path(url)}")
+    for s in srcs:
+        h = s.hdr
+        print(f"  {T.key(s.cid):<16} {T.dim(f"z{h['minzoom']}-{h['maxzoom']}, {h['ntiles']} tiles, profile {h['profile']}")}")
+    print(T.kv('OGC API landing', T.path(url + '/'), 16))
+    print(T.kv('Collections', T.path(url + '/collections'), 16))
+    print(T.kv('OGC tiles', T.path(f"{url}/collections/<id>/map/tiles/{TMS_ID}/{{z}}/{{y}}/{{x}}.png"), 16))
+    print(T.kv('XYZ (Leaflet)', T.path(f"{url}/xyz/<id>/{{z}}/{{x}}/{{y}}.png"), 16))
+    print(T.kv('WMS 1.3.0', T.path(f"{url}/wms?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.3.0"), 16))
+    print(T.dim('  Ctrl-C to stop'))
     if not block:
         t = threading.Thread(target=httpd.serve_forever, daemon=True); t.start(); return httpd
     try: httpd.serve_forever()

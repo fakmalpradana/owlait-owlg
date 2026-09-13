@@ -21,6 +21,7 @@ from . import imgio as _io
 from .codec import enc_tile, dec_tile
 from . import crypto as cy
 from .errors import OwlgError
+from . import _term as T
 
 MAGIC = b'OWLG'; VERSION = 4
 DEFAULT_TILE = 512
@@ -194,7 +195,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
         except Exception:
             base = 'webp'
         if verbose:
-            print(f"  --base auto resolved to {base}")
+            print(T.dim(f"  --base auto resolved to {base}"))
     if base not in ('webp', 'avif', 'jxl'):
         raise OwlgError(f"unknown base codec: {base!r} (use webp, avif, jxl or auto)")
     codec = 'jxl_lossless' if (delta == 0 and base == 'jxl') else base
@@ -204,8 +205,10 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
         qlist = WEBP_Q if codec == 'webp' else AVIF_Q
         q = _pick_quality(src, coded, tile, codec, delta, qlist, groups=groups)
     if verbose:
-        print(f"  {W}x{H}x{B} uint8  tile {tile}px  base={codec} q={q}  delta=+/-{delta}")
-        if const: print(f"  constant bands dropped: {const}")
+        print(f"  {T.num(f'{W}x{H}x{B}')} uint8  raw {T.mb(W*H*B)}  {T.dim(f'layout tiled, {tile}px tiles')}")
+        print(f"  base {T.key(codec)} q={T.num(q)}  {T.bound(delta)}")
+        if const: print(T.dim(f"  constant bands dropped: {const}"))
+    prog = T.Progress('level 0 tile rows', 0) if verbose else None
 
     key = prefix = salt = None
     if password:
@@ -224,6 +227,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     _h.update(json.dumps(dict(w=W, h=H, bands=B, tile=tile, const=const,
                               coded=coded), separators=(',', ':'),
                          sort_keys=True).encode())
+    if prog: prog.total = nty
     with rasterio.open(src) as ds:
         for ty in range(nty):
             for tx in range(ntx):
@@ -242,11 +246,11 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
                 C = np.ascontiguousarray(a)
                 n = enc_tile(C, Bs, 0, th, 0, tw, delta, buf)
                 corr_idx[k] = w.add(buf[:n].tobytes()); nbytes_c += n
-            if verbose and nty > 4 and (ty % max(1, nty//10) == 0):
-                print(f"    level 0: tile row {ty+1}/{nty}", flush=True)
+            if prog and nty > 4: prog.update(ty + 1)
     levels.append(dict(w=W, h=H, nty=nty, ntx=ntx, base=base_idx, corr=corr_idx))
     if verbose:
-        print(f"  level 0: {nty*ntx} tile" + ("s" if nty*ntx != 1 else "") + f", base {nbytes_b/1e6:.2f} MB + correction {nbytes_c/1e6:.2f} MB")
+        print(f"  level 0: {T.num(nty*ntx)} tile" + ("s" if nty*ntx != 1 else "")
+              + T.dim(f", base {nbytes_b/1e6:.2f} MB + correction {nbytes_c/1e6:.2f} MB"))
 
     # ---------- overview: read the previous level back, downsample 2x ----------
     if overviews:
@@ -286,7 +290,7 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
             w.dir.extend(newdir)
             levels.append(dict(w=cw, h=ch, nty=cnty, ntx=cntx, base=cbase, corr=None))
             if verbose:
-                print(f"  overview {lv+1}: {cw}x{ch}, {cnty*cntx} tile" + ("s" if cnty*cntx != 1 else "") + f", {tot/1e6:.2f} MB")
+                print(T.dim(f"  overview {lv+1}: {cw}x{ch}, {cnty*cntx} tile" + ("s" if cnty*cntx != 1 else "") + f", q={oq}, {tot/1e6:.2f} MB"))
             lv += 1
     else:
         w.close()
@@ -312,8 +316,9 @@ def write_tiled(src, dst, delta=0, base='webp', q=None, tile=DEFAULT_TILE,
     tot = os.path.getsize(dst)
     raw = W*H*B
     if verbose:
-        print(f"  -> {dst}: {tot/1e6:.3f} MB  {raw/tot:.2f}x  "
-              f"{len(levels)} levels  ({time.time()-t0:.1f}s)")
+        enc = ' ' + T.tag('ENCRYPTED') if password else ''
+        print(f"  -> {T.path(dst)}: {T.mb(tot)}  {T.ratio(raw/tot)}  {T.bound(delta)}{enc}"
+              f"  {T.dim(f'{len(levels)} levels ({time.time()-t0:.1f}s)')}")
     return dict(total=tot, ratio=raw/tot, levels=len(levels))
 
 

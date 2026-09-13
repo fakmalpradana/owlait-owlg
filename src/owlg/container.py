@@ -14,6 +14,7 @@ warnings.filterwarnings('ignore')
 from . import imgio as _io
 from .codec import enc_tile, dec_tile
 from . import crypto as cy
+from . import _term as T
 
 MAGIC = b'OWLG'; VERSION = 3
 REC_MAGIC = b'OWLR'
@@ -105,8 +106,8 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
     C = np.ascontiguousarray(A[coded]); nb = len(coded)
     sha = hashlib.sha256(np.ascontiguousarray(A).tobytes()).hexdigest()
     if verbose:
-        print(f"  {W}x{H}x{B} uint8  RAW={RAW/1e6:.2f} MB")
-        if const: print(f"  constant bands dropped: {const} (-{len(const)*H*W/1e6:.2f} MB)")
+        print(f"  {T.num(f'{W}x{H}x{B}')} uint8  raw {T.mb(RAW)}  {T.dim('layout flat')}")
+        if const: print(T.dim(f"  constant bands dropped: {const} (-{len(const)*H*W/1e6:.2f} MB)"))
 
     # A base codec that is itself lossless (JPEG XL) needs no correction layer
     # at all, which is the smallest lossless result when the decoder is present.
@@ -143,11 +144,14 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
             elif _b == 'jxl':  cands = [('webp', x) for x in WEBP_Q]
             else: raise OwlgError(f'unknown base codec: {_b}')
         best = None
-        for cod, qq in cands:
+        prog = T.Progress(f"searching {cands[0][0]} quality", len(cands)) if verbose and len(cands) > 1 else None
+        for i, (cod, qq) in enumerate(cands):
             bl, tb, sz = build(cod, qq)
-            if verbose: print(f"    try {cod} q={qq}: {sz/1e6:.3f} MB")
             if best is None or sz < best[2]: best = (bl, tb, sz, cod, qq)
+            if prog: prog.update(i + 1, f"q={qq}: {sz/1e6:.3f} MB")
         bblobs, tblobs, _, cod, qq = best; used = (cod, qq)
+        if verbose:
+            print(f"  base {T.key(cod)} q={T.num(qq)}  {T.dim(f'base {sum(map(len,bblobs))/1e6:.3f} MB + correction {sum(map(len,tblobs))/1e6:.3f} MB')}")
         mode = 'lossless' if delta == 0 else 'nearlossless'
         rblobs = []
         if recovery:
@@ -164,7 +168,7 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
                     n = enc_tile(C, rec, y0, y1, x0, x1, 0, wbuf)
                     rblobs.append(wbuf[:n].tobytes())
             if verbose:
-                print(f"  recovery tier: +{sum(map(len,rblobs))/1e6:.3f} MB -> revert becomes bit-identical")
+                print(f"  recovery tier: +{sum(map(len,rblobs))/1e6:.3f} MB -> {T.ok('revert becomes bit-identical')}")
 
     hdr = dict(v=VERSION, mode=mode, w=W, h=H, bands=B, delta=int(delta),
                codec=used[0], q=used[1], tile=tile, const=const, coded=coded,
@@ -175,9 +179,9 @@ def write_owlg(src, dst, delta=0, codec='auto', q=None, tile=1024, base=None,
     _write_file(dst, hdr, bblobs, tblobs, rblobs, password, kdf_iters)
     tot = os.path.getsize(dst)
     if verbose:
-        enc = ' ENCRYPTED' if password else ''
-        print(f"  -> {dst}: {tot/1e6:.3f} MB  {RAW/tot:.2f}x  "
-              f"{'LOSSLESS' if delta==0 else f'bound=+/-{delta} DN'}{enc}  ({time.time()-t0:.1f}s)")
+        enc = ' ' + T.tag('ENCRYPTED') if password else ''
+        print(f"  -> {T.path(dst)}: {T.mb(tot)}  {T.ratio(RAW/tot)}  {T.bound(delta)}{enc}"
+              f"  {T.dim(f'({time.time()-t0:.1f}s)')}")
     return dict(total=tot, ratio=RAW/tot, base=sum(map(len,bblobs)), corr=sum(map(len,tblobs)))
 
 def _write_file(dst, hdr, bblobs, tblobs, rblobs, password, iters):

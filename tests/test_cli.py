@@ -132,11 +132,24 @@ def test_info_flat(sample_tif, encode, capsys):
     skip_unless_supported("flat", 2)
     code, out = _main(capsys, ["info", encode("flat", 2)])
     assert code is None
-    for field in ('"v": 3', '"w": 791', '"h": 718', '"bands": 3', '"delta": 2',
-                  '"mode": "nearlossless"'):
-        assert field in out, f"{field} missing from `owlg info` output"
-    assert "encrypted False" in out
-    assert "bit-identical revert: NO" in out
+    assert "OWLG v3" in out and "flat" in out
+    assert "791 x 718 x 3" in out
+    assert "bound +/-2 DN" in out
+    assert "encrypted      : no" in out
+    assert "base layer" in out and "correction" in out
+
+
+@needs_encoder
+def test_info_json_prints_the_raw_header(sample_tif, encode, capsys):
+    import json
+
+    skip_unless_supported("flat", 2)
+    code, out = _main(capsys, ["info", encode("flat", 2), "--json"])
+    assert code is None
+    hdr = json.loads(out)
+    assert hdr["v"] == 3 and hdr["w"] == 791 and hdr["h"] == 718
+    assert hdr["bands"] == 3 and hdr["delta"] == 2 and hdr["mode"] == "nearlossless"
+    assert "dir" not in hdr
 
 
 @needs_encoder
@@ -144,11 +157,12 @@ def test_info_tiled_shows_the_pyramid(sample_tif, encode, capsys):
     skip_unless_supported("tiled", 2)
     code, out = _main(capsys, ["info", encode("tiled", 2)])
     assert code is None
-    assert "pyramid:" in out
-    assert "level 0: 791x718" in out
-    assert "tile 512px" in out
-    assert "tile-scan digest: stored" in out
-    assert "bit-identical revert: NO" in out
+    assert "pyramid" in out
+    assert "level 0  791 x 718" in out
+    assert "512 px" in out
+    assert "tile digest    : stored" in out
+    assert "base + correction" in out and "base only" in out
+    assert "bound +/-2 DN" in out
 
 
 @needs_encoder
@@ -156,7 +170,7 @@ def test_info_tiled_lossless_promises_bit_identical(encode, capsys):
     skip_unless_supported("tiled", 0)
     code, out = _main(capsys, ["info", encode("tiled", 0)])
     assert code is None
-    assert "bit-identical revert: YES" in out
+    assert "LOSSLESS" in out and "bit-identical" in out
 
 
 # ----------------------------------------------------------------------- vrt
@@ -235,7 +249,7 @@ def test_check_reports_whether_a_specific_file_can_be_opened(encode, capsys):
     skip_unless_supported("tiled", 2)
     code, out = _main(capsys, ["check", encode("tiled", 2)])
     assert code == 0
-    assert "uses base 'webp'" in out
+    assert "uses base webp" in out
     assert "CAN be opened here" in out
 
 
